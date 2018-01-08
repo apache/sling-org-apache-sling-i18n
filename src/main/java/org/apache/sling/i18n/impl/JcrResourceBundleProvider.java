@@ -210,47 +210,52 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     @Override
     public void onChange(List<ResourceChange> changes) {
-        boolean refreshed = false;
-        for(final ResourceChange change : changes) {
-            log.trace("handleEvent: Detecting event {} for path '{}'", change.getType(), change.getPath());
+        for (final ResourceChange change : changes) {
+             onChange(change);
+        }
+        // refresh at most once per onChange()
+        resourceResolver.refresh();
+    }
 
-            // if this change was on languageRootPath level this might change basename and locale as well, therefore
-            // invalidate everything
-            if (languageRootPaths.contains(change.getPath())) {
-                log.debug(
-                        "handleEvent: Detected change of cached language root '{}', removing all cached ResourceBundles",
-                        change.getPath());
-                scheduleReloadBundles(true);
-            } else {
-                // if it is only a change below a root path, only messages of one resource bundle can be affected!
-                for (final String root : languageRootPaths) {
-                    if (change.getPath().startsWith(root)) {
-                        // figure out which JcrResourceBundle from the cached ones is affected
-                        for (JcrResourceBundle bundle : resourceBundleCache.values()) {
-                            if (bundle.getLanguageRootPaths().contains(root)) {
-                                // reload it
-                                log.debug("handleEvent: Resource changes below '{}', reloading ResourceBundle '{}'",
-                                        root, bundle);
-                                scheduleReloadBundle(bundle);
-                                return;
-                            }
+    private void onChange(ResourceChange change) {
+        log.trace("handleChange: Detecting change {} for path '{}'", change.getType(), change.getPath());
+
+        // if this change was on languageRootPath level this might change basename and locale as well, therefore
+        // invalidate everything
+        if (languageRootPaths.contains(change.getPath())) {
+            log.debug(
+                    "handleChange: Detected change of cached language root '{}', removing all cached ResourceBundles",
+                    change.getPath());
+            scheduleReloadBundles(true);
+        } else {
+            for (final String root : languageRootPaths) {
+                if (change.getPath().startsWith(root)) {
+                    // figure out which JcrResourceBundles from the cached ones is affected
+                    boolean bundlesFound = false;
+                    for (JcrResourceBundle bundle : resourceBundleCache.values()) {
+                        if (bundle.getLanguageRootPaths().contains(root)) {
+                            // reload it
+                            log.debug("handleChange: Resource changes below '{}', reloading ResourceBundle '{}'",
+                                    root, bundle);
+                            scheduleReloadBundle(bundle);
+                            bundlesFound = true;
                         }
-                        log.debug("handleEvent: No cached resource bundle found with root '{}'", root);
-                        break;
                     }
-                }
-                // may be a completely new dictionary
-                if (!refreshed) {
-                    // refresh at most once per onChange()
-                    resourceResolver.refresh();
-                    refreshed = true;
-                }
-                if (isDictionaryResource(change)) {
-                    scheduleReloadBundles(true);
+                    if(bundlesFound) {
+                        log.debug("handleChange: Refreshed all affected resource bundles for path '{}'", change.getPath());
+                        return;
+                    }
+                    log.debug("handleChange: No cached resource bundle found with root '{}'", root);
+                    break;
                 }
             }
         }
+        // may be a completely new dictionary
+        if (isDictionaryResource(change)) {
+            scheduleReloadBundles(true);
+        }
     }
+
 
     private boolean isDictionaryResource(final ResourceChange change) {
         // language node changes happen quite frequently (https://issues.apache.org/jira/browse/SLING-2881)

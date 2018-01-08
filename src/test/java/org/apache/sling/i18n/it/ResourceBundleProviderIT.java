@@ -18,26 +18,6 @@
  */
 package org.apache.sling.i18n.it;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
-import static org.ops4j.pax.exam.CoreOptions.frameworkProperty;
-import static org.ops4j.pax.exam.CoreOptions.junitBundles;
-import static org.ops4j.pax.exam.CoreOptions.mavenBundle;
-import static org.ops4j.pax.exam.CoreOptions.options;
-import static org.ops4j.pax.exam.CoreOptions.systemProperty;
-import static org.ops4j.pax.exam.CoreOptions.when;
-
-import java.io.File;
-import java.net.URISyntaxException;
-import java.util.Locale;
-import java.util.ResourceBundle;
-
-import javax.inject.Inject;
-import javax.jcr.Node;
-import javax.jcr.RepositoryException;
-import javax.jcr.Session;
-
 import org.apache.sling.i18n.ResourceBundleProvider;
 import org.apache.sling.jcr.api.SlingRepository;
 import org.junit.After;
@@ -51,6 +31,18 @@ import org.ops4j.pax.exam.cm.ConfigurationAdminOptions;
 import org.ops4j.pax.exam.junit.PaxExam;
 import org.ops4j.pax.exam.spi.reactors.ExamReactorStrategy;
 import org.ops4j.pax.exam.spi.reactors.PerClass;
+
+import javax.inject.Inject;
+import javax.jcr.Node;
+import javax.jcr.RepositoryException;
+import javax.jcr.Session;
+import java.io.File;
+import java.net.URISyntaxException;
+import java.util.Locale;
+import java.util.ResourceBundle;
+
+import static org.junit.Assert.*;
+import static org.ops4j.pax.exam.CoreOptions.*;
 
 @RunWith(PaxExam.class)
 @ExamReactorStrategy(PerClass.class)
@@ -68,6 +60,9 @@ public class ResourceBundleProviderIT {
     public static final int RETRY_TIMEOUT_MSEC = 50000;
     public static final String MSG_KEY1 = "foo";
     public static final String MSG_KEY2 = "foo2";
+    public static final String MSG_KEY3 = "foo3";
+
+    public static final String BASENAME = "basename";
 
     @Inject
     private SlingRepository repository;
@@ -81,6 +76,7 @@ public class ResourceBundleProviderIT {
     private Node deDeRoot;
     private Node frRoot;
     private Node enRoot;
+    private Node enBasenameRoot;
 
     @Configuration
     public Option[] config() {
@@ -295,6 +291,7 @@ public class ResourceBundleProviderIT {
         frRoot = addLanguageNode(i18nRoot, "fr");
         deDeRoot = addLanguageNode(i18nRoot, "de_DE");
         enRoot = addLanguageNode(i18nRoot, "en");
+        enBasenameRoot = addLanguageNodeWithBasename(i18nRoot, "en",BASENAME);
         session.save();
     }
 
@@ -306,33 +303,39 @@ public class ResourceBundleProviderIT {
     }
 
     private Node addLanguageNode(Node parent, String language) throws RepositoryException {
-        final Node child = parent.addNode(language, "nt:folder");
+        final Node child = parent.addNode(language, "sling:Folder");
         child.addMixin("mix:language");
         child.setProperty("jcr:language", language);
         return child;
     }
 
-    private void assertMessages(final String key, final String deMessage, final String deDeMessage, final String frMessage) {
+    private Node addLanguageNodeWithBasename(Node parent, String language, String basename) throws RepositoryException {
+        final Node child = parent.addNode(language + "-" + basename, "sling:Folder");
+        child.addMixin("mix:language");
+        child.setProperty("jcr:language", language);
+        if(basename != null) {
+            child.setProperty("sling:basename", basename);
+        }
+        return child;
+    }
+
+    private void assertMessage(final String key, final Locale locale, final String basename, final String value) {
         new Retry(RETRY_TIMEOUT_MSEC) {
             @Override
             protected void exec() {
                 {
-                    final ResourceBundle deDE = resourceBundleProvider.getResourceBundle(Locale.GERMANY); // this is the resource bundle for de_DE
-                    assertNotNull(deDE);
-                    assertEquals(deDeMessage, deDE.getString(key));
-                }
-                {
-                    final ResourceBundle de = resourceBundleProvider.getResourceBundle(Locale.GERMAN);
-                    assertNotNull(de);
-                    assertEquals(deMessage, de.getString(key));
-                }
-                {
-                    final ResourceBundle fr = resourceBundleProvider.getResourceBundle(Locale.FRENCH);
-                    assertNotNull(fr);
-                    assertEquals(frMessage, fr.getString(key));
+                    final ResourceBundle resourceBundle = resourceBundleProvider.getResourceBundle(basename, locale); // this is the resource bundle for de_DE
+                    assertNotNull(resourceBundle);
+                    assertEquals(value, resourceBundle.getString(key));
                 }
             }
         };
+    }
+
+    private void assertMessages(final String key, final String deMessage, final String deDeMessage, final String frMessage) {
+        assertMessage(key, Locale.GERMAN, null, deMessage);
+        assertMessage(key, Locale.GERMANY, null, deDeMessage);
+        assertMessage(key, Locale.FRENCH, null, frMessage);
     }
 
     private void setMessage(final Node rootNode, final String key, final String message) throws RepositoryException {
@@ -376,6 +379,18 @@ public class ResourceBundleProviderIT {
         setMessage(enRoot, MSG_KEY2, "EN_changed");
         session.save();
         assertMessages(MSG_KEY2, "EN_changed", "EN_changed", "EN_changed");
+
+        // set a message and fetch it so that it is cached in the resourcebundle cache
+        setMessage(enBasenameRoot, MSG_KEY3, "EN_basename_message");
+        session.save();
+        assertMessage(MSG_KEY3, Locale.ENGLISH, null, "EN_basename_message");
+        assertMessage(MSG_KEY3, Locale.ENGLISH, BASENAME, "EN_basename_message");
+
+        // see that both resource bundles with and without basename are changed
+        setMessage(enBasenameRoot, MSG_KEY3, "EN_basename_changed");
+        session.save();
+        assertMessage(MSG_KEY3, Locale.ENGLISH, null, "EN_basename_changed");
+        assertMessage(MSG_KEY3, Locale.ENGLISH, BASENAME, "EN_basename_changed");
     }
 
     private String references() {
