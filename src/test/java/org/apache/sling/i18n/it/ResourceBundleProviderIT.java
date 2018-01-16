@@ -243,7 +243,7 @@ public class ResourceBundleProviderIT {
 
                 mavenBundle("org.apache.sling", "org.apache.sling.jcr.oak.server", "1.1.0"),
 
-                mavenBundle("org.apache.sling", "org.apache.sling.testing.tools", "1.0.17-SNAPSHOT"),
+                mavenBundle("org.apache.sling", "org.apache.sling.testing.tools", "1.0.16"),
                 mavenBundle("org.apache.sling", "org.apache.sling.commons.johnzon", "1.0.0"),
                 mavenBundle("org.apache.httpcomponents", "httpcore-osgi", "4.1.2"),
                 mavenBundle("org.apache.httpcomponents", "httpclient-osgi", "4.1.2"),
