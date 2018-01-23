@@ -62,7 +62,7 @@ public class ResourceBundleProviderIT {
     public static final String MSG_KEY2 = "foo2";
     public static final String MSG_KEY3 = "foo3";
 
-    public static final String BASENAME = "basename";
+    public static final String BASENAME = "my-basename";
 
     @Inject
     private SlingRepository repository;
@@ -348,6 +348,18 @@ public class ResourceBundleProviderIT {
         }
         node.setProperty("sling:key", key);
         node.setProperty("sling:message", message);
+    }
+
+    @Test
+    public void testGetResourceWithBasename() throws RepositoryException {
+        // set a key which available in the en dictionary without the basename
+        setMessage(enRoot, MSG_KEY1, "regular");
+        session.save();
+        // default key must be returned, as the one set above did not have the basename
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME, MSG_KEY1);
+        setMessage(enBasenameRoot, MSG_KEY1, "overwritten");
+        session.save();
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME, "overwritten");
     }
 
     @Test
