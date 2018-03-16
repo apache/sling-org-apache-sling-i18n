@@ -131,7 +131,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      * configuration property. This defaults to <code>Locale.ENGLISH</code> if
      * the configuration property is not set.
      */
-    private Locale defaultLocale = Locale.ENGLISH;
+    private volatile Locale defaultLocale = Locale.ENGLISH;
 
     /**
      * Map of cached resource bundles indexed by a key combined of the base name

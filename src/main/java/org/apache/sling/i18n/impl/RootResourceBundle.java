@@ -18,9 +18,9 @@
  */
 package org.apache.sling.i18n.impl;
 
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Locale;
-import java.util.NoSuchElementException;
 import java.util.ResourceBundle;
 
 /**
@@ -37,18 +37,6 @@ import java.util.ResourceBundle;
  * </ul>
  */
 public class RootResourceBundle extends ResourceBundle {
-
-    // The empty enumeration returned fomr getKeys()
-    private final Enumeration<String> EMPTY = new Enumeration<String>() {
-
-        public boolean hasMoreElements() {
-            return false;
-        }
-
-        public String nextElement() {
-            throw new NoSuchElementException();
-        }
-    };
 
     // The pseudo Locale returned by getLocale()
     private final Locale locale = new Locale("");
@@ -74,7 +62,6 @@ public class RootResourceBundle extends ResourceBundle {
      */
     @Override
     public Enumeration<String> getKeys() {
-        return EMPTY;
+        return Collections.emptyEnumeration();
     }
-
 }
