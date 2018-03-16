@@ -72,22 +72,21 @@ public class JcrResourceBundle extends ResourceBundle {
 
     private final String baseName;
 
-    private final Set<String> languageRoots = new HashSet<String>();
+    private final Set<String> languageRoots = new HashSet<>();
 
-    JcrResourceBundle(Locale locale, String baseName,
-            ResourceResolver resourceResolver) {
+    JcrResourceBundle(final Locale locale, final String baseName,
+            final ResourceResolver resourceResolver) {
         this.locale = locale;
         this.baseName = baseName;
 
         log.info("Finding all dictionaries for '{}' (basename: {}) ...", locale, baseName == null ? "<none>" : baseName);
 
-        long start = System.currentTimeMillis();
-        resourceResolver.refresh();
-        Set<String> roots = loadPotentialLanguageRoots(resourceResolver, locale, baseName);
+        final long start = System.currentTimeMillis();
+        final Set<String> roots = loadPotentialLanguageRoots(resourceResolver, locale, baseName);
         this.resources = loadFully(resourceResolver, roots, this.languageRoots);
 
-        long end = System.currentTimeMillis();
         if (log.isInfoEnabled()) {
+            final long end = System.currentTimeMillis();
             log.info(
                 "Finished loading {} entries for '{}' (basename: {}) in {}ms",
                 new Object[] { resources.size(), locale, baseName == null ? "<none>" : baseName, (end - start)}
@@ -177,7 +176,7 @@ public class JcrResourceBundle extends ResourceBundle {
         //   [2] /libs   -> [dict6, ...]
         //   [3] (other) -> [dict7, dict8 ...]
 
-        List<List<Map<String, Object>>> dictionariesBySearchPath = new ArrayList<List<Map<String, Object>>>(searchPath.length + 1);
+        List<List<Map<String, Object>>> dictionariesBySearchPath = new ArrayList<>(searchPath.length + 1);
         for (int i = 0; i < searchPath.length + 1; i++) {
             dictionariesBySearchPath.add(new ArrayList<Map<String, Object>>());
         }
@@ -191,7 +190,7 @@ public class JcrResourceBundle extends ResourceBundle {
             }
 
             // linked hash map to keep order (not functionally important, but helpful for dictionary debugging)
-            Map<String, Object> dictionary = new LinkedHashMap<String, Object>();
+            Map<String, Object> dictionary = new LinkedHashMap<>();
 
             // find where in the search path this dict belongs
             // otherwise put it in the outside-the-search-path bucket (last list)
@@ -215,7 +214,7 @@ public class JcrResourceBundle extends ResourceBundle {
         }
 
         // linked hash map to keep order (not functionally important, but helpful for dictionary debugging)
-        final Map<String, Object> result = new LinkedHashMap<String, Object>();
+        final Map<String, Object> result = new LinkedHashMap<>();
 
         // first, add everything that's not under a search path (e.g. /content)
         // below, same strings inside a search path dictionary would overlay them since
@@ -325,7 +324,7 @@ public class JcrResourceBundle extends ResourceBundle {
         final String localeRFC4646String = toRFC4646String(locale);
         final String localeRFC4646StringLower = localeRFC4646String.toLowerCase();
 
-        final Set<String> paths = new LinkedHashSet<String>();
+        final Set<String> paths = new LinkedHashSet<>();
         final Iterator<Resource> bundles = resourceResolver.findResources(QUERY_LANGUAGE_ROOTS, "xpath");
         while (bundles.hasNext()) {
             Resource bundle = bundles.next();

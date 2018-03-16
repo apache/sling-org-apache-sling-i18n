@@ -73,7 +73,7 @@ import org.slf4j.LoggerFactory;
  */
 @Component(service = {ResourceBundleProvider.class, ResourceChangeListener.class},
     property = {
-            Constants.SERVICE_DESCRIPTION + "=I18n Resource Bundle Provider",
+            Constants.SERVICE_DESCRIPTION + "=Apache Sling I18n Resource Bundle Provider",
             Constants.SERVICE_VENDOR + "=The Apache Software Foundation",
             ResourceChangeListener.PATHS + "=/"
     })
@@ -86,7 +86,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      */
     private static final Pattern USER_ASSIGNED_COUNTRY_CODES_PATTERN = Pattern.compile("aa|q[m-z]|x[a-z]|zz");
 
-    @ObjectClassDefinition(name ="Apache Sling I18N ResourceBundle Provider",
+    @ObjectClassDefinition(name ="Apache Sling I18N Resource Bundle Provider",
             description ="ResourceBundleProvider service which loads the messages "+
                  "from the repository. If the user name field is left empty, the provider will "+
                  "log into the repository as the administrative user. Otherwise the given user "+
@@ -132,12 +132,6 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      * the configuration property is not set.
      */
     private Locale defaultLocale = Locale.ENGLISH;
-
-    /**
-     * The resource resolver used to access the resource bundles. This object is
-     * retrieved from the {@link #resourceResolverFactory} using the service user session.
-     */
-    private ResourceResolver resourceResolver;
 
     /**
      * Map of cached resource bundles indexed by a key combined of the base name
@@ -197,72 +191,104 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         return getResourceBundle(null, locale);
     }
 
+    private ResourceResolver createResourceResolver() throws LoginException {
+        return resourceResolverFactory.getServiceResourceResolver(null);
+    }
+
     @Override
     public ResourceBundle getResourceBundle(String baseName, Locale locale) {
         if (locale == null) {
             locale = defaultLocale;
         }
 
-        return getResourceBundleInternal(baseName, locale);
+        try ( final ResourceResolver resolver = createResourceResolver() ) {
+
+            return getResourceBundleInternal(resolver, baseName, locale);
+        } catch ( final LoginException le) {
+            throw (MissingResourceException)new MissingResourceException("Unable to create service resource resolver",
+                    baseName,
+                    locale.toString()).initCause(le);
+        }
     }
 
-    // ---------- EventHandler ------------------------------------------------
+    // ---------- ResourceChangeListener ------------------------------------------------
+
+    private static final class ChangeStatus {
+        public ResourceResolver resourceResolver;
+        public boolean reloadAll = false;
+        public final Set<JcrResourceBundle> reloadBundles = new HashSet<>();
+    }
 
     @Override
-    public void onChange(List<ResourceChange> changes) {
-        for (final ResourceChange change : changes) {
-             onChange(change);
+    public void onChange(final List<ResourceChange> changes) {
+        final ChangeStatus status = new ChangeStatus();
+        try {
+            for (final ResourceChange change : changes) {
+                this.onChange(status, change);
+                // if we need to reload all, we can skip all other events
+                if ( status.reloadAll ) {
+                    break;
+                }
+            }
+            if ( status.reloadAll ) {
+                this.scheduleReloadBundles(true);
+            } else {
+                for(final JcrResourceBundle bundle : status.reloadBundles ) {
+                    this.scheduleReloadBundle(bundle);
+                }
+            }
+        } catch ( final LoginException le) {
+            log.error("Unable to get service resource resolver.", le);
+        } finally {
+            if ( status.resourceResolver != null ) {
+                status.resourceResolver.close();
+            }
         }
-        // refresh at most once per onChange()
-        resourceResolver.refresh();
     }
 
-    private void onChange(ResourceChange change) {
-        log.trace("handleChange: Detecting change {} for path '{}'", change.getType(), change.getPath());
+    private void onChange(final ChangeStatus status, final ResourceChange change)
+    throws LoginException {
+        log.debug("onChange: Detecting change {} for path '{}'", change.getType(), change.getPath());
 
         // if this change was on languageRootPath level this might change basename and locale as well, therefore
         // invalidate everything
         if (languageRootPaths.contains(change.getPath())) {
             log.debug(
-                    "handleChange: Detected change of cached language root '{}', removing all cached ResourceBundles",
+                    "onChange: Detected change of cached language root '{}', removing all cached ResourceBundles",
                     change.getPath());
-            scheduleReloadBundles(true);
+            status.reloadAll = true;
         } else {
             for (final String root : languageRootPaths) {
                 if (change.getPath().startsWith(root)) {
                     // figure out which JcrResourceBundles from the cached ones is affected
-                    boolean bundlesFound = false;
                     for (JcrResourceBundle bundle : resourceBundleCache.values()) {
                         if (bundle.getLanguageRootPaths().contains(root)) {
                             // reload it
-                            log.debug("handleChange: Resource changes below '{}', reloading ResourceBundle '{}'",
+                            log.debug("onChange: Resource changes below '{}', reloading ResourceBundle '{}'",
                                     root, bundle);
-                            scheduleReloadBundle(bundle);
-                            bundlesFound = true;
+                            status.reloadBundles.add(bundle);
                         }
                     }
-                    if(bundlesFound) {
-                        log.debug("handleChange: Refreshed all affected resource bundles for path '{}'", change.getPath());
-                        return;
-                    }
-                    log.debug("handleChange: No cached resource bundle found with root '{}'", root);
-                    break;
                 }
             }
-        }
-        // may be a completely new dictionary
-        if (isDictionaryResource(change)) {
-            scheduleReloadBundles(true);
+
+            // may be a completely new dictionary
+            if ( status.resourceResolver == null ) {
+                status.resourceResolver = createResourceResolver() ;
+            }
+            if (isDictionaryResource(status.resourceResolver, change)) {
+                status.reloadAll = true;
+            }
         }
     }
 
 
-    private boolean isDictionaryResource(final ResourceChange change) {
+    private boolean isDictionaryResource(final ResourceResolver resolver, final ResourceChange change) {
         // language node changes happen quite frequently (https://issues.apache.org/jira/browse/SLING-2881)
         // therefore only consider changes either for sling:MessageEntry's
         // or for JSON dictionaries
         // get valuemap
-        final Resource resource = resourceResolver.getResource(change.getPath());
+        final Resource resource = resolver.getResource(change.getPath());
         if (resource == null) {
             log.trace("Could not get resource for '{}' for event {}", change.getPath(), change.getType());
             return false;
@@ -302,7 +328,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         return false;
     }
 
-    private void scheduleReloadBundles(boolean withDelay) {
+    private void scheduleReloadBundles(final boolean withDelay) {
         // cancel all reload individual bundle jobs!
         synchronized(scheduledJobNames) {
             for (String scheduledJobName : scheduledJobNames) {
@@ -328,7 +354,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         }, options);
     }
 
-    private void scheduleReloadBundle(JcrResourceBundle bundle) {
+    private void scheduleReloadBundle(final JcrResourceBundle bundle) {
         String baseName = bundle.getBaseName();
         Locale locale = bundle.getLocale();
         final Key key = new Key(baseName, locale);
@@ -393,14 +419,13 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      */
     @Activate
     protected void activate(final BundleContext context, final Config config) throws LoginException {
-        String localeString = config.locale_default();
+        final String localeString = config.locale_default();
         this.defaultLocale = toLocale(localeString);
         this.preloadBundles = config.preload_bundles();
 
         this.bundleContext = context;
-        invalidationDelay = config.invalidation_delay();
+        this.invalidationDelay = config.invalidation_delay();
         if (this.resourceResolverFactory != null) { // this is only null during test execution!
-            resourceResolver = resourceResolverFactory.getServiceResourceResolver(null);
             scheduleReloadBundles(false);
         }
 
@@ -409,7 +434,6 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     @Deactivate
     protected void deactivate() {
         clearCache();
-        resourceResolver.close();
     }
 
     // ---------- internal -----------------------------------------------------
@@ -423,7 +447,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      *             created and the <code>ResourceResolver</code> is not
      *             available to access the resources.
      */
-    private ResourceBundle getResourceBundleInternal(final String baseName, final Locale locale) {
+    private ResourceBundle getResourceBundleInternal(final ResourceResolver resolver, final String baseName, final Locale locale) {
         final Key key = new Key(baseName, locale);
         JcrResourceBundle resourceBundle = resourceBundleCache.get(key);
         if (resourceBundle != null) {
@@ -440,7 +464,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
                     log.debug("getResourceBundleInternal({}): got cache hit on second try", key);
                 } else {
                     log.debug("getResourceBundleInternal({}): reading from Repository", key);
-                    resourceBundle = createResourceBundle(key.baseName, key.locale);
+                    resourceBundle = createResourceBundle(resolver, key.baseName, key.locale);
                     resourceBundleCache.put(key, resourceBundle);
                     registerResourceBundle(key, resourceBundle);
                 }
@@ -480,13 +504,13 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      * @throws MissingResourceException If the <code>ResourceResolver</code>
      *             is not available to access the resources.
      */
-    private JcrResourceBundle createResourceBundle(String baseName, Locale locale) {
-        final JcrResourceBundle bundle = new JcrResourceBundle(locale, baseName, resourceResolver);
+    private JcrResourceBundle createResourceBundle(final ResourceResolver resolver, final String baseName, final Locale locale) {
+        final JcrResourceBundle bundle = new JcrResourceBundle(locale, baseName, resolver);
 
         // set parent resource bundle
         Locale parentLocale = getParentLocale(locale);
         if (parentLocale != null) {
-            bundle.setParent(getResourceBundleInternal(baseName, parentLocale));
+            bundle.setParent(getResourceBundleInternal(resolver, baseName, parentLocale));
         } else {
             bundle.setParent(getRootResourceBundle());
         }
@@ -554,23 +578,26 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     private void preloadBundles() {
         if (preloadBundles) {
-            resourceResolver.refresh();
-            Iterator<Map<String, Object>> bundles = resourceResolver.queryResources(
+            try ( final ResourceResolver resolver = createResourceResolver() ) {
+                final Iterator<Map<String, Object>> bundles = resolver.queryResources(
                     JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
-            Set<Key> usedKeys = new HashSet<>();
-            while (bundles.hasNext()) {
-                Map<String,Object> bundle = bundles.next();
-                if (bundle.containsKey(PROP_LANGUAGE)) {
-                    Locale locale = toLocale(bundle.get(PROP_LANGUAGE).toString());
-                    String baseName = null;
-                    if (bundle.containsKey(PROP_BASENAME)) {
-                        baseName = bundle.get(PROP_BASENAME).toString();
-                    }
-                    Key key = new Key(baseName, locale);
-                    if (usedKeys.add(key)) {
-                        getResourceBundle(baseName, locale);
+                final Set<Key> usedKeys = new HashSet<>();
+                while (bundles.hasNext()) {
+                    final Map<String,Object> bundle = bundles.next();
+                    if (bundle.containsKey(PROP_LANGUAGE)) {
+                        Locale locale = toLocale(bundle.get(PROP_LANGUAGE).toString());
+                        String baseName = null;
+                        if (bundle.containsKey(PROP_BASENAME)) {
+                            baseName = bundle.get(PROP_BASENAME).toString();
+                        }
+                        Key key = new Key(baseName, locale);
+                        if (usedKeys.add(key)) {
+                            getResourceBundle(baseName, locale);
+                        }
                     }
                 }
+            } catch ( final LoginException le) {
+                log.error("Unable to login using service user", le);
             }
         }
     }

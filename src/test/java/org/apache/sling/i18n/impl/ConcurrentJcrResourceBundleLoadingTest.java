@@ -32,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.i18n.impl.JcrResourceBundleProvider.Key;
 import org.junit.Before;
 import org.junit.Test;
@@ -81,8 +82,9 @@ public class ConcurrentJcrResourceBundleLoadingTest {
                 return 5000;
             }
         });
-        doReturn(english).when(provider, "createResourceBundle", eq(null), eq(Locale.ENGLISH));
-        doReturn(german).when(provider, "createResourceBundle", eq(null), eq(Locale.GERMAN));
+        doReturn(null).when(provider, "createResourceResolver");
+        doReturn(english).when(provider, "createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
+        doReturn(german).when(provider, "createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
         Mockito.when(german.getLocale()).thenReturn(Locale.GERMAN);
         Mockito.when(english.getLocale()).thenReturn(Locale.ENGLISH);
         Mockito.when(german.getParent()).thenReturn(english);
@@ -95,7 +97,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertEquals(german, provider.getResourceBundle(Locale.GERMAN));
         assertEquals(german, provider.getResourceBundle(Locale.GERMAN));
 
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", eq(null), any(Locale.class));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), any(Locale.class));
     }
 
     @Test
@@ -114,8 +116,8 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         executor.shutdown();
         executor.awaitTermination(5, TimeUnit.SECONDS);
 
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", eq(null), eq(Locale.GERMAN));
+        verifyPrivate(provider, times(1)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
+        verifyPrivate(provider, times(1)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
     }
 
     @Test
@@ -132,8 +134,8 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         provider.getResourceBundle(Locale.ENGLISH);
         provider.getResourceBundle(Locale.GERMAN);
 
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", eq(null), eq(Locale.GERMAN));
+        verifyPrivate(provider, times(1)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
     }
 
     @Test
@@ -150,7 +152,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         provider.getResourceBundle(Locale.ENGLISH);
         provider.getResourceBundle(Locale.GERMAN);
 
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", eq(null), eq(Locale.GERMAN));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
     }
 }
