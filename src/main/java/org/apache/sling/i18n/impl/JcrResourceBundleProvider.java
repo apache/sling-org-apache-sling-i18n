@@ -201,14 +201,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             locale = defaultLocale;
         }
 
-        try ( final ResourceResolver resolver = createResourceResolver() ) {
-
-            return getResourceBundleInternal(resolver, baseName, locale);
-        } catch ( final LoginException le) {
-            throw (MissingResourceException)new MissingResourceException("Unable to create service resource resolver",
-                    baseName,
-                    locale.toString()).initCause(le);
-        }
+        return getResourceBundleInternal(null, baseName, locale);
     }
 
     // ---------- ResourceChangeListener ------------------------------------------------
@@ -446,7 +439,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      *             created and the <code>ResourceResolver</code> is not
      *             available to access the resources.
      */
-    private ResourceBundle getResourceBundleInternal(final ResourceResolver resolver, final String baseName, final Locale locale) {
+    private ResourceBundle getResourceBundleInternal(ResourceResolver optionalResolver, final String baseName, final Locale locale) {
         final Key key = new Key(baseName, locale);
         JcrResourceBundle resourceBundle = resourceBundleCache.get(key);
         if (resourceBundle != null) {
@@ -463,9 +456,25 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
                     log.debug("getResourceBundleInternal({}): got cache hit on second try", key);
                 } else {
                     log.debug("getResourceBundleInternal({}): reading from Repository", key);
-                    resourceBundle = createResourceBundle(resolver, key.baseName, key.locale);
-                    resourceBundleCache.put(key, resourceBundle);
-                    registerResourceBundle(key, resourceBundle);
+                    ResourceResolver localResolver = null;
+                    try  {
+                        if ( optionalResolver == null ) {
+                            localResolver = createResourceResolver();
+                            optionalResolver = localResolver;
+                        }
+
+                        resourceBundle = createResourceBundle(optionalResolver, key.baseName, key.locale);
+                        resourceBundleCache.put(key, resourceBundle);
+                        registerResourceBundle(key, resourceBundle);
+                    } catch ( final LoginException le) {
+                        throw (MissingResourceException)new MissingResourceException("Unable to create service resource resolver",
+                                baseName,
+                                locale.toString()).initCause(le);
+                    } finally {
+                        if ( localResolver != null ) {
+                            localResolver.close();
+                        }
+                    }
                 }
             } catch (InterruptedException e) {
                 Thread.interrupted();
