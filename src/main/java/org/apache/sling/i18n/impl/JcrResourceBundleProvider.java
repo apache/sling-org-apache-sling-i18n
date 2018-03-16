@@ -150,9 +150,9 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      * Return root resource bundle as created on-demand by
      * {@link #getRootResourceBundle()}.
      */
-    private ResourceBundle rootResourceBundle;
+    private volatile ResourceBundle rootResourceBundle;
 
-    private BundleContext bundleContext;
+    private volatile BundleContext bundleContext;
 
     /**
      * Each ResourceBundle is registered as a service. Each registration is stored in this map with the locale & base name used as a key.
@@ -162,6 +162,10 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     private boolean preloadBundles;
 
     private long invalidationDelay;
+
+    private ResourceResolver createResourceResolver() throws LoginException {
+        return resourceResolverFactory.getServiceResourceResolver(null);
+    }
 
     // ---------- ResourceBundleProvider ---------------------------------------
 
@@ -187,16 +191,12 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      *             is not available to access the resources.
      */
     @Override
-    public ResourceBundle getResourceBundle(Locale locale) {
+    public ResourceBundle getResourceBundle(final Locale locale) {
         return getResourceBundle(null, locale);
     }
 
-    private ResourceResolver createResourceResolver() throws LoginException {
-        return resourceResolverFactory.getServiceResourceResolver(null);
-    }
-
     @Override
-    public ResourceBundle getResourceBundle(String baseName, Locale locale) {
+    public ResourceBundle getResourceBundle(final String baseName, Locale locale) {
         if (locale == null) {
             locale = defaultLocale;
         }
@@ -343,7 +343,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         } else {
             options = scheduler.NOW();
         }
-        options.name("JcrResourceBundleProvider: reload all resource bundles");
+        options.name("ResourceBundleProvider: reload all resource bundles");
         scheduler.schedule(new Runnable() {
             @Override
             public void run() {
@@ -355,13 +355,11 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     }
 
     private void scheduleReloadBundle(final JcrResourceBundle bundle) {
-        String baseName = bundle.getBaseName();
-        Locale locale = bundle.getLocale();
-        final Key key = new Key(baseName, locale);
+        final Key key = new Key(bundle.getBaseName(), bundle.getLocale());
 
         // defer this job
         ScheduleOptions options = scheduler.AT(new Date(System.currentTimeMillis() + invalidationDelay));
-        final String jobName = "JcrResourceBundleProvider: reload bundle with key " + key.toString();
+        final String jobName = "ResourceBundleProvider: reload bundle with key " + key.toString();
         scheduledJobNames.add(jobName);
         options.name(jobName);
         scheduler.schedule(new Runnable() {
@@ -434,6 +432,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     @Deactivate
     protected void deactivate() {
         clearCache();
+        this.bundleContext = null;
     }
 
     // ---------- internal -----------------------------------------------------
@@ -568,11 +567,13 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         resourceBundleCache.clear();
         languageRootPaths.clear();
 
+        final List<ServiceRegistration<ResourceBundle>> regs;
         synchronized (this) {
-            for (ServiceRegistration<ResourceBundle> serviceReg : bundleServiceRegistrations.values()) {
-                serviceReg.unregister();
-            }
+            regs = new ArrayList<>(bundleServiceRegistrations.values());
             bundleServiceRegistrations.clear();
+        }
+        for (final ServiceRegistration<ResourceBundle> serviceReg : regs) {
+            serviceReg.unregister();
         }
     }
 
@@ -585,19 +586,19 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
                 while (bundles.hasNext()) {
                     final Map<String,Object> bundle = bundles.next();
                     if (bundle.containsKey(PROP_LANGUAGE)) {
-                        Locale locale = toLocale(bundle.get(PROP_LANGUAGE).toString());
+                        final Locale locale = toLocale(bundle.get(PROP_LANGUAGE).toString());
                         String baseName = null;
                         if (bundle.containsKey(PROP_BASENAME)) {
                             baseName = bundle.get(PROP_BASENAME).toString();
                         }
-                        Key key = new Key(baseName, locale);
+                        final Key key = new Key(baseName, locale);
                         if (usedKeys.add(key)) {
-                            getResourceBundle(baseName, locale);
+                            getResourceBundleInternal(resolver, baseName, locale);
                         }
                     }
                 }
             } catch ( final LoginException le) {
-                log.error("Unable to login using service user", le);
+                log.error("Unable to create service user resource resolver.", le);
             }
         }
     }
