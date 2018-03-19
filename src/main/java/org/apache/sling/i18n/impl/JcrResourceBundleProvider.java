@@ -87,11 +87,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     private static final Pattern USER_ASSIGNED_COUNTRY_CODES_PATTERN = Pattern.compile("aa|q[m-z]|x[a-z]|zz");
 
     @ObjectClassDefinition(name ="Apache Sling I18N Resource Bundle Provider",
-            description ="ResourceBundleProvider service which loads the messages "+
-                 "from the repository. If the user name field is left empty, the provider will "+
-                 "log into the repository as the administrative user. Otherwise the given user "+
-                 "name and password are used to access the repository. Failing to access the "+
-                 "repository, effectively disables the provider.")
+            description ="ResourceBundleProvider service which loads the messages from the repository.")
     public @interface Config {
 
         @AttributeDefinition(name = "Default Locale",
