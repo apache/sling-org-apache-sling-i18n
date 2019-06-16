@@ -1,0 +1,16 @@
+Conditional-Package:\
+  org.apache.sling.commons.osgi
+
+Require-Capability:\
+  osgi.implementation;filter:="(&(osgi.implementation=osgi.http)(version>=1.0)(!(version>=2.0)))"
+
+Sling-Nodetypes:\
+  SLING-INF/nodetypes/jcrlanguage.cnd,\
+  SLING-INF/nodetypes/message.cnd
+
+-includeresource:\
+  @jackrabbit-jcr-commons-*.jar!/(org/apache/jackrabbit/util/ISO9075.*|org/apache/jackrabbit/util/XMLChar.*|org/apache/jackrabbit/util/Text.*|org/apache/jackrabbit/commons/json/Json*)
+
+-removeheaders:\
+  Include-Resource,\
+  Private-Package
