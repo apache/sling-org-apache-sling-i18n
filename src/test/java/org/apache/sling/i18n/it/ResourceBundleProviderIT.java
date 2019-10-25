@@ -207,13 +207,13 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
         // set a message and fetch it so that it is cached in the resourcebundle cache
         setMessage(enBasenameRoot, MSG_KEY3, "EN_basename_message");
         session.save();
-        assertMessage(MSG_KEY3, Locale.ENGLISH, null, "EN_basename_message");
+        assertMessage(MSG_KEY3, Locale.ENGLISH, null, MSG_KEY3); // returns the key, as it's not found
         assertMessage(MSG_KEY3, Locale.ENGLISH, BASENAME, "EN_basename_message");
 
         // see that both resource bundles with and without basename are changed
         setMessage(enBasenameRoot, MSG_KEY3, "EN_basename_changed");
         session.save();
-        assertMessage(MSG_KEY3, Locale.ENGLISH, null, "EN_basename_changed");
+        assertMessage(MSG_KEY3, Locale.ENGLISH, null, MSG_KEY3);
         assertMessage(MSG_KEY3, Locale.ENGLISH, BASENAME, "EN_basename_changed");
     }
 
