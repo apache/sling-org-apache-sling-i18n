@@ -19,40 +19,62 @@
 package org.apache.sling.i18n.impl;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.times;
+import static org.powermock.api.mockito.PowerMockito.doAnswer;
 import static org.powermock.api.mockito.PowerMockito.doReturn;
+import static org.powermock.api.mockito.PowerMockito.mock;
 import static org.powermock.api.mockito.PowerMockito.spy;
 import static org.powermock.api.mockito.PowerMockito.verifyPrivate;
 
 import java.lang.annotation.Annotation;
+import java.util.Arrays;
 import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.sling.i18n.impl.JcrResourceBundleProvider.Key;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.osgi.framework.BundleContext;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
+import org.powermock.modules.junit4.PowerMockRunnerDelegate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Test case to verify that each bundle is only loaded once, even
  * if concurrent requests for the same bundle are made.
  */
 @RunWith(PowerMockRunner.class)
+@PowerMockRunnerDelegate(Parameterized.class)
 @PrepareForTest(JcrResourceBundleProvider.class)
 public class ConcurrentJcrResourceBundleLoadingTest {
 
+    @Parameterized.Parameters(name = "preload_bundles={0}")
+    public static Iterable<? extends Object> PRELOAD_BUNDLES() {
+        return Arrays.asList(Boolean.TRUE, Boolean.FALSE);
+    }
+
+    private static final Logger LOG = LoggerFactory.getLogger(ConcurrentJcrResourceBundleLoadingTest.class);
+
     @Mock JcrResourceBundle english;
     @Mock JcrResourceBundle german;
+
+    @Parameterized.Parameter public Boolean preload = Boolean.FALSE;
 
     private JcrResourceBundleProvider provider;
 
@@ -68,7 +90,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
 
             @Override
             public boolean preload_bundles() {
-                return false;
+                return preload;
             }
 
             @Override
@@ -152,5 +174,36 @@ public class ConcurrentJcrResourceBundleLoadingTest {
 
         verifyPrivate(provider, times(2)).invoke("createResourceBundle", eq(null), eq(Locale.ENGLISH));
         verifyPrivate(provider, times(2)).invoke("createResourceBundle", eq(null), eq(Locale.GERMAN));
+    }
+
+    /**
+     * Test that when a ResourceBundle is reloaded the already cached ResourceBundle is returned (preload=true) as long as a long running
+     * call to createResourceBundle() takes. For preload=false that will be blocking in getResourceBundle() instead.
+     *
+     * @throws Exception
+     */
+    @Test
+    public void newBundleReplacesOldBundleAfterReload() throws Exception {
+        final ResourceBundle oldBundle = provider.getResourceBundle(Locale.ENGLISH);
+        final ResourceBundle newBundle = mock(JcrResourceBundle.class);
+        final AtomicBoolean newBundleReady = new AtomicBoolean(false);
+
+        doAnswer(new Answer<ResourceBundle>() {
+            @Override public ResourceBundle answer(InvocationOnMock invocationOnMock) throws Throwable {
+                Thread.sleep(1000);
+                newBundleReady.set(true);
+                return newBundle;
+            }
+        }).when(provider, "createResourceBundle", eq(null), eq(Locale.ENGLISH));
+
+        Executors.newScheduledThreadPool(1).scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                ResourceBundle expected = newBundleReady.get() ? newBundle : oldBundle;
+                assertSame(expected, provider.getResourceBundle(Locale.ENGLISH));
+            }
+        }, 0, 200, TimeUnit.MILLISECONDS);
+
+        provider.reloadBundle(new Key(null, Locale.ENGLISH));
     }
 }

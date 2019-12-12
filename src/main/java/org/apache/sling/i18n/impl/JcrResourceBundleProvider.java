@@ -199,10 +199,6 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     @Override
     public ResourceBundle getResourceBundle(String baseName, Locale locale) {
-        if (locale == null) {
-            locale = defaultLocale;
-        }
-
         return getResourceBundleInternal(baseName, locale);
     }
 
@@ -343,18 +339,12 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     }
 
     void reloadBundle(final Key key) {
-        // remove bundle from cache
-        resourceBundleCache.remove(key);
         log.info("Reloading resource bundle for {}", key);
-        // unregister bundle
-        ServiceRegistration<ResourceBundle> serviceRegistration = null;
-        synchronized (this) {
-            serviceRegistration = bundleServiceRegistrations.remove(key);
-        }
-        if (serviceRegistration != null) {
-            serviceRegistration.unregister();
-        } else {
-            log.warn("Could not find resource bundle service for {}", key);
+        if (!this.preloadBundles) {
+            // remove bundle from cache
+            resourceBundleCache.remove(key);
+            // unregister bundle
+            unregisterResourceBundle(key);
         }
 
         Collection<JcrResourceBundle> dependentBundles = new ArrayList<>();
@@ -375,7 +365,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
         if (preloadBundles) {
             // reload the bundle from the repository (will also fill cache and register as a service)
-            getResourceBundle(key.baseName, key.locale);
+            getResourceBundleInternal(key.baseName, key.locale, true);
         }
     }
 
@@ -418,9 +408,17 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      *             created and the <code>ResourceResolver</code> is not
      *             available to access the resources.
      */
-    private ResourceBundle getResourceBundleInternal(final String baseName, final Locale locale) {
+    private ResourceBundle getResourceBundleInternal(String baseName, Locale locale) {
+        return getResourceBundleInternal(baseName, locale, false);
+    }
+
+    private ResourceBundle getResourceBundleInternal(String baseName, Locale locale, boolean overwriteCache) {
+        if (locale == null) {
+            locale = defaultLocale;
+        }
+
         final Key key = new Key(baseName, locale);
-        JcrResourceBundle resourceBundle = resourceBundleCache.get(key);
+        JcrResourceBundle resourceBundle = !overwriteCache ? resourceBundleCache.get(key) : null;
         if (resourceBundle != null) {
             log.debug("getResourceBundleInternal({}): got cache hit on first try", key);
         } else {
@@ -430,13 +428,17 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             final Semaphore loadingGuard = loadingGuards.get(key);
             try {
                 loadingGuard.acquire();
-                resourceBundle = resourceBundleCache.get(key);
+                resourceBundle = !overwriteCache ? resourceBundleCache.get(key) : null;
                 if (resourceBundle != null) {
                     log.debug("getResourceBundleInternal({}): got cache hit on second try", key);
                 } else {
                     log.debug("getResourceBundleInternal({}): reading from Repository", key);
                     resourceBundle = createResourceBundle(key.baseName, key.locale);
-                    resourceBundleCache.put(key, resourceBundle);
+                    // put the newly created ResourceBundle to the cache. If it replaces an existing entry unregister the existing
+                    // service registration first before re-registering the new ResourceBundle.
+                    if (resourceBundleCache.put(key, resourceBundle) != null) {
+                        unregisterResourceBundle(key);
+                    }
                     registerResourceBundle(key, resourceBundle);
                 }
             } catch (InterruptedException e) {
@@ -447,6 +449,18 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         }
         log.trace("getResourceBundleInternal({}) ==> {}", key, resourceBundle);
         return resourceBundle;
+    }
+
+    private void unregisterResourceBundle(Key key) {
+        ServiceRegistration<ResourceBundle> serviceRegistration = null;
+        synchronized (this) {
+            serviceRegistration = bundleServiceRegistrations.remove(key);
+        }
+        if (serviceRegistration != null) {
+            serviceRegistration.unregister();
+        } else {
+            log.warn("Could not find resource bundle service for {}", key);
+        }
     }
 
     private void registerResourceBundle(Key key, JcrResourceBundle resourceBundle) {
