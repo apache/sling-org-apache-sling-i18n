@@ -21,7 +21,9 @@ package org.apache.sling.i18n.impl;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.times;
 import static org.powermock.api.mockito.PowerMockito.doAnswer;
 import static org.powermock.api.mockito.PowerMockito.doReturn;
@@ -48,6 +50,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.mockito.verification.VerificationMode;
 import org.osgi.framework.BundleContext;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
@@ -207,5 +210,20 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         }, 0, 200, TimeUnit.MILLISECONDS);
 
         provider.reloadBundle(new Key(null, Locale.ENGLISH));
+
+        // we expect getResourceBundleInternal() called once in the beginning of the test and once again after reloading the bundle.
+        final int expectedGetResourceBundleInternal = 2;
+        VerificationMode verificationMode;
+
+        if (preload) {
+            // when preloading the calls to getResourceBundleInternal are non-blocking and so more calls will happen while reloading.
+            // assuming at least one more
+            verificationMode = atLeast(expectedGetResourceBundleInternal + 1);
+        } else {
+            verificationMode = times(expectedGetResourceBundleInternal);
+        }
+
+        verifyPrivate(provider, verificationMode)
+                .invoke("getResourceBundleInternal", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH), anyBoolean());
     }
 }
