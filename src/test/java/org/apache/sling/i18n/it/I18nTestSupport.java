@@ -25,6 +25,7 @@ import org.ops4j.pax.exam.Option;
 import static org.apache.sling.testing.paxexam.SlingOptions.slingQuickstartOakTar;
 import static org.ops4j.pax.exam.CoreOptions.composite;
 import static org.ops4j.pax.exam.CoreOptions.junitBundles;
+import static org.ops4j.pax.exam.CoreOptions.options;
 import static org.ops4j.pax.exam.cm.ConfigurationAdminOptions.factoryConfiguration;
 import static org.ops4j.pax.exam.cm.ConfigurationAdminOptions.newConfiguration;
 
@@ -32,7 +33,7 @@ public abstract class I18nTestSupport extends TestSupport {
 
     @Configuration
     public Option[] configuration() {
-        return new Option[]{
+        return options(
             baseConfiguration(),
             quickstart(),
             // Sling I18N
@@ -48,7 +49,7 @@ public abstract class I18nTestSupport extends TestSupport {
                 .put("whitelist.bundles.regexp", "PAXEXAM-PROBE-.*")
                 .asOption(),
             junitBundles()
-        };
+        );
     }
 
     protected Option quickstart() {
