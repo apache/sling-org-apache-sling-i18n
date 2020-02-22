@@ -35,7 +35,7 @@
     <description>Support for creating Java I18N ResourceBundles from repository resources.</description>
 
     <properties>
-        <org.ops4j.pax.exam.version>4.13.1</org.ops4j.pax.exam.version>
+        <org.ops4j.pax.exam.version>4.13.2</org.ops4j.pax.exam.version>
     </properties>
 
     <scm>
