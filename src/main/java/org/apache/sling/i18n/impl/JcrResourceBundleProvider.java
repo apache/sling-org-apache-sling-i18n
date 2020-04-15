@@ -75,7 +75,10 @@ import org.slf4j.LoggerFactory;
     property = {
             Constants.SERVICE_DESCRIPTION + "=Apache Sling I18n Resource Bundle Provider",
             Constants.SERVICE_VENDOR + "=The Apache Software Foundation",
-            ResourceChangeListener.PATHS + "=/"
+            ResourceChangeListener.PATHS + "=/",
+            ResourceChangeListener.CHANGES + "=ADDED",
+            ResourceChangeListener.CHANGES + "=REMOVED",
+            ResourceChangeListener.CHANGES + "=CHANGED"
     })
 @Designate(ocd = JcrResourceBundleProvider.Config.class)
 public class JcrResourceBundleProvider implements ResourceBundleProvider, ResourceChangeListener, ExternalResourceChangeListener {
