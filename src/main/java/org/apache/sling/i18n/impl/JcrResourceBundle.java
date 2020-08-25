@@ -337,7 +337,8 @@ public class JcrResourceBundle extends ResourceBundle {
                         || language.equals(localeRFC4646StringLower)) {
                     // basename might be a multivalue (see https://issues.apache.org/jira/browse/SLING-4547)
                     String[] baseNames = properties.get(PROP_BASENAME, new String[]{});
-                    if (baseName == null || Arrays.asList(baseNames).contains(baseName)) {
+                    if ((baseName != null && Arrays.asList(baseNames).contains(baseName))
+                            || baseName == null && Arrays.asList(baseNames).isEmpty()) {
                         paths.add(bundle.getPath());
                     }
                 }
