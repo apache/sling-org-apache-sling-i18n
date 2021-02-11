@@ -4,6 +4,8 @@ Conditional-Package:\
 Require-Capability:\
   osgi.implementation;filter:="(&(osgi.implementation=osgi.http)(version>=1.0)(!(version>=2.0)))"
 
+Provide-Capability: osgi.extender;osgi.extender="org.apache.sling.i18n.resourcebundle.locator.registrar";version:Version="1.0"
+
 Sling-Nodetypes:\
   SLING-INF/nodetypes/jcrlanguage.cnd,\
   SLING-INF/nodetypes/message.cnd
