@@ -20,9 +20,10 @@ package org.apache.sling.i18n.impl;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.eq;
+import static org.mockito.AdditionalMatchers.or;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.times;
 import static org.powermock.api.mockito.PowerMockito.doAnswer;
@@ -46,6 +47,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
@@ -56,8 +58,6 @@ import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.modules.junit4.PowerMockRunnerDelegate;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Test case to verify that each bundle is only loaded once, even
@@ -72,8 +72,6 @@ public class ConcurrentJcrResourceBundleLoadingTest {
     public static Iterable<? extends Object> PRELOAD_BUNDLES() {
         return Arrays.asList(Boolean.TRUE, Boolean.FALSE);
     }
-
-    private static final Logger LOG = LoggerFactory.getLogger(ConcurrentJcrResourceBundleLoadingTest.class);
 
     @Mock JcrResourceBundle english;
     @Mock JcrResourceBundle german;
@@ -108,8 +106,8 @@ public class ConcurrentJcrResourceBundleLoadingTest {
             }
         });
         doReturn(null).when(provider, "createResourceResolver");
-        doReturn(english).when(provider, "createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
-        doReturn(german).when(provider, "createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
+        doReturn(english).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
+        doReturn(german).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
         Mockito.when(german.getLocale()).thenReturn(Locale.GERMAN);
         Mockito.when(english.getLocale()).thenReturn(Locale.ENGLISH);
         Mockito.when(german.getParent()).thenReturn(english);
@@ -122,7 +120,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertEquals(german, provider.getResourceBundle(Locale.GERMAN));
         assertEquals(german, provider.getResourceBundle(Locale.GERMAN));
 
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), any(Locale.class));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), any(Locale.class));
     }
 
     @Test
@@ -141,8 +139,8 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         executor.shutdown();
         executor.awaitTermination(5, TimeUnit.SECONDS);
 
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
+        verifyPrivate(provider, times(1)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
+        verifyPrivate(provider, times(1)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
     }
 
     @Test
@@ -159,8 +157,8 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         provider.getResourceBundle(Locale.ENGLISH);
         provider.getResourceBundle(Locale.GERMAN);
 
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
+        verifyPrivate(provider, times(1)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
     }
 
     @Test
@@ -177,8 +175,8 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         provider.getResourceBundle(Locale.ENGLISH);
         provider.getResourceBundle(Locale.GERMAN);
 
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.GERMAN));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
+        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
     }
 
     /**
@@ -199,7 +197,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
                 newBundleReady.set(true);
                 return newBundle;
             }
-        }).when(provider, "createResourceBundle", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH));
+        }).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
 
         Executors.newScheduledThreadPool(1).scheduleAtFixedRate(new Runnable() {
             @Override
@@ -224,6 +222,6 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         }
 
         verifyPrivate(provider, verificationMode)
-                .invoke("getResourceBundleInternal", any(ResourceResolver.class), eq(null), eq(Locale.ENGLISH), anyBoolean());
+                .invoke("getResourceBundleInternal", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH), anyBoolean());
     }
 }
