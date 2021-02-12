@@ -22,7 +22,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.ops4j.pax.exam.CoreOptions.composite;
 import static org.ops4j.pax.exam.CoreOptions.streamBundle;
-import static org.ops4j.pax.exam.CoreOptions.vmOption;
 import static org.ops4j.pax.tinybundles.core.TinyBundles.withBnd;
 
 import java.io.ByteArrayInputStream;
@@ -47,8 +46,6 @@ import org.junit.runner.RunWith;
 import org.ops4j.pax.exam.Configuration;
 import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.junit.PaxExam;
-import org.ops4j.pax.exam.options.ModifiableCompositeOption;
-import org.ops4j.pax.exam.options.extra.VMOption;
 import org.ops4j.pax.exam.spi.reactors.ExamReactorStrategy;
 import org.ops4j.pax.exam.spi.reactors.PerClass;
 import org.ops4j.pax.tinybundles.core.TinyBundle;
@@ -85,66 +82,53 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
 
     private Session session;
 
+    @Override
     @Configuration
     public Option[] configuration() {
-    	// create 4 tiny bundles with different configurations for testing
+        // create 4 tiny bundles with different configurations for testing
         Option[] bundle = new Option[4];
-    	for (int i=1; i <=4; i++) {
-    		String bundleSymbolicName = String.format("TEST-I18N-BUNDLE-%d", i);
-    		
-    		String baseName = String.format("org.apache.sling.i18n.testing%d.Resources", i);
-    		
-    		String traversePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
-    		String resourcePath;
-    		if (i == 1) {
-    			resourcePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
-    		} else if (i == 2) {
-    			resourcePath = String.format("/libs/i18n/testing%d/folder1", i); //NOSONAR
-    		} else {
-    			resourcePath = String.format("/libs/i18n/testing%d/folder1/folder2", i); //NOSONAR
-    		}
-        	String pathInBundle = String.format("SLING-INF%s", resourcePath);
+        for (int i=1; i <=4; i++) {
+            String bundleSymbolicName = String.format("TEST-I18N-BUNDLE-%d", i);
+
+            String baseName = String.format("org.apache.sling.i18n.testing%d.Resources", i);
+
+            String traversePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
+            String resourcePath;
+            if (i == 1) {
+                resourcePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
+            } else if (i == 2) {
+                resourcePath = String.format("/libs/i18n/testing%d/folder1", i); //NOSONAR
+            } else {
+                resourcePath = String.format("/libs/i18n/testing%d/folder1/folder2", i); //NOSONAR
+            }
+            String pathInBundle = String.format("SLING-INF%s", resourcePath);
             final Multimap<String, String> content = ImmutableListMultimap.of(
-            		pathInBundle, "Resources.json",
-            		pathInBundle, "Resources.json.props",
-            		pathInBundle, "Resources_en_CA.json",
-            		pathInBundle, "Resources_en_CA.json.props"
+                    pathInBundle, "Resources.json",
+                    pathInBundle, "Resources.json.props",
+                    pathInBundle, "Resources_en_CA.json",
+                    pathInBundle, "Resources_en_CA.json.props"
             );
             int traverseDepth;
             if (i < 4) {
-            	traverseDepth = i;
+                traverseDepth = i;
             } else {
-            	traverseDepth = 1;
+                traverseDepth = 1;
             }
-    		try {
-    			bundle[i - 1] = buildContentBundle(bundleSymbolicName, 
-							    					pathInBundle, resourcePath, 
-							    					traversePath, traverseDepth, 
-							    					content, baseName);
-    		} catch (IOException e) {
-    			throw new RuntimeException("Failed to build the content bundle", e);
-    		}
-    	}
+            try {
+                bundle[i - 1] = buildContentBundle(bundleSymbolicName, 
+                                                    pathInBundle, resourcePath, 
+                                                    traversePath, traverseDepth, 
+                                                    content, baseName);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to build the content bundle", e);
+            }
+        }
         
         return composite(composite(super.configuration()), 
-        					optionalRemoteDebug(),
-        					composite(bundle))
-        		.getOptions();
+                         composite(bundle))
+                .getOptions();
     }
 
-    /**
-     * Optionally configure remote debugging on the port supplied by the "debugPort"
-     * system property.
-     */
-    protected ModifiableCompositeOption optionalRemoteDebug() {
-        VMOption option = null;
-        String property = System.getProperty("debugPort");
-        if (property != null) {
-            option = vmOption(String.format("-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=%s", property));
-        }
-        return composite(option);
-    }
-    
     /**
      * Add content to our test bundle
      */
@@ -167,9 +151,9 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
     }
 
     protected Option buildContentBundle(String bundleSymbolicName, 
-    		String pathInBundle, String resourcePath, 
-    		String traversePath, int traverseDepth, 
-    		final Multimap<String, String> content, String basename) throws IOException {
+            String pathInBundle, String resourcePath, 
+            String traversePath, int traverseDepth, 
+            final Multimap<String, String> content, String basename) throws IOException {
         final TinyBundle bundle = TinyBundles.bundle();
         bundle.set(Constants.BUNDLE_SYMBOLICNAME, bundleSymbolicName);
         bundle.set(Constants.REQUIRE_CAPABILITY, "osgi.extender;filter:=\"(&(osgi.extender=org.apache.sling.i18n.resourcebundle.locator.registrar)(version<=1.0.0)(!(version>=2.0.0)))\"");
@@ -177,15 +161,15 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
         bundle.set("Sling-Bundle-Resources", String.format("%s;path:=%s;propsJSON:=props", resourcePath, pathInBundle));
 
         for (final Map.Entry<String, String> entry : content.entries()) {
-			String entryPathInBundle = entry.getKey();
-			String entryResourcePath = entry.getValue();
-			if (entryResourcePath.endsWith(".props")) {
-				// content is a template so we need to pass the args to replace the placeholder tokens
-				addContent(bundle, entryPathInBundle, entryResourcePath, basename);
-			} else {
-				// content is not a template, so no need to pass any args
-				addContent(bundle, entryPathInBundle, entryResourcePath);
-			}
+            String entryPathInBundle = entry.getKey();
+            String entryResourcePath = entry.getValue();
+            if (entryResourcePath.endsWith(".props")) {
+                // content is a template so we need to pass the args to replace the placeholder tokens
+                addContent(bundle, entryPathInBundle, entryResourcePath, basename);
+            } else {
+                // content is not a template, so no need to pass any args
+                addContent(bundle, entryPathInBundle, entryResourcePath);
+            }
         }
         return streamBundle(
             bundle.build(withBnd())
@@ -210,25 +194,25 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
 
     @Test
     public void testLocatedResourceBundleDepth1() throws RepositoryException {
-    	assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME1, "World");
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME1, "World");
         assertMessage(MSG_KEY1, Locale.CANADA, BASENAME1, "Canada");
     }
 
     @Test
     public void testLocatedResourceBundleDepth2() throws RepositoryException {
-    	assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME2, "World");
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME2, "World");
         assertMessage(MSG_KEY1, Locale.CANADA, BASENAME2, "Canada");
     }
 
     @Test
     public void testLocatedResourceBundleDepth3() throws RepositoryException {
-    	assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME3, "World");
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME3, "World");
         assertMessage(MSG_KEY1, Locale.CANADA, BASENAME3, "Canada");
     }
 
     @Test
     public void testNotLocatedResourceBundle() throws RepositoryException {
-    	assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME4, MSG_KEY1);
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME4, MSG_KEY1);
         assertMessage(MSG_KEY1, Locale.CANADA, BASENAME4, MSG_KEY1);
     }
 
