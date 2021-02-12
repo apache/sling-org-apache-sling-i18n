@@ -69,10 +69,13 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
     public static final String MSG_KEY1 = "hello";
     public static final String MSG_KEY2 = "test1";
 
+    public static final String BASENAME0 = "org.apache.sling.i18n.testing0.Resources";
     public static final String BASENAME1 = "org.apache.sling.i18n.testing1.Resources";
     public static final String BASENAME2 = "org.apache.sling.i18n.testing2.Resources";
     public static final String BASENAME3 = "org.apache.sling.i18n.testing3.Resources";
     public static final String BASENAME4 = "org.apache.sling.i18n.testing4.Resources";
+    public static final String BASENAME5 = "org.apache.sling.i18n.testing5.Resources";
+    public static final String BASENAME6 = "org.apache.sling.i18n.testing6.Resources";
 
     @Inject
     private SlingRepository repository;
@@ -86,15 +89,22 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
     @Configuration
     public Option[] configuration() {
         // create 4 tiny bundles with different configurations for testing
-        Option[] bundle = new Option[4];
-        for (int i=1; i <=4; i++) {
+        Option[] bundle = new Option[7];
+        for (int i=0; i <=6; i++) {
             String bundleSymbolicName = String.format("TEST-I18N-BUNDLE-%d", i);
 
             String baseName = String.format("org.apache.sling.i18n.testing%d.Resources", i);
 
-            String traversePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
+            String traversePath;
+            if (i == 5) {
+            	traversePath = "";
+            } else if (i == 6) {
+            	traversePath = null;
+            } else {
+            	traversePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
+            }
             String resourcePath;
-            if (i == 1) {
+            if (i <= 1) {
                 resourcePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
             } else if (i == 2) {
                 resourcePath = String.format("/libs/i18n/testing%d/folder1", i); //NOSONAR
@@ -115,7 +125,7 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
                 traverseDepth = 1;
             }
             try {
-                bundle[i - 1] = buildContentBundle(bundleSymbolicName, 
+                bundle[i] = buildContentBundle(bundleSymbolicName, 
                                                     pathInBundle, resourcePath, 
                                                     traversePath, traverseDepth, 
                                                     content, baseName);
@@ -157,7 +167,19 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
         final TinyBundle bundle = TinyBundles.bundle();
         bundle.set(Constants.BUNDLE_SYMBOLICNAME, bundleSymbolicName);
         bundle.set(Constants.REQUIRE_CAPABILITY, "osgi.extender;filter:=\"(&(osgi.extender=org.apache.sling.i18n.resourcebundle.locator.registrar)(version<=1.0.0)(!(version>=2.0.0)))\"");
-        bundle.set(Constants.PROVIDE_CAPABILITY, String.format("org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\";depth=%d", traversePath, traverseDepth));
+        if (traverseDepth <= 0) {
+        	if (traversePath == null) {
+                bundle.set(Constants.PROVIDE_CAPABILITY, "org.apache.sling.i18n.resourcebundle.locator");
+        	} else {
+                bundle.set(Constants.PROVIDE_CAPABILITY, String.format("org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\"", traversePath));
+        	}
+        } else {
+        	if (traversePath == null) {
+                bundle.set(Constants.PROVIDE_CAPABILITY, String.format("org.apache.sling.i18n.resourcebundle.locator;depth=%d", traverseDepth));
+        	} else {
+                bundle.set(Constants.PROVIDE_CAPABILITY, String.format("org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\";depth=%d", traversePath, traverseDepth));
+        	}
+        }
         bundle.set("Sling-Bundle-Resources", String.format("%s;path:=%s;propsJSON:=props", resourcePath, pathInBundle));
 
         for (final Map.Entry<String, String> entry : content.entries()) {
@@ -193,6 +215,12 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
     }
 
     @Test
+    public void testLocatedResourceBundleDepthNotSpecified() throws RepositoryException {
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME0, "World");
+        assertMessage(MSG_KEY1, Locale.CANADA, BASENAME0, "Canada");
+    }
+
+    @Test
     public void testLocatedResourceBundleDepth1() throws RepositoryException {
         assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME1, "World");
         assertMessage(MSG_KEY1, Locale.CANADA, BASENAME1, "Canada");
@@ -216,4 +244,15 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
         assertMessage(MSG_KEY1, Locale.CANADA, BASENAME4, MSG_KEY1);
     }
 
+    @Test
+    public void testNotLocatedResourceBundleEmptyLocatorPath() throws RepositoryException {
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME5, MSG_KEY1);
+        assertMessage(MSG_KEY1, Locale.CANADA, BASENAME5, MSG_KEY1);
+    }
+
+    @Test
+    public void testNotLocatedResourceBundleNotSpecifiedLocatorPath() throws RepositoryException {
+        assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME6, MSG_KEY1);
+        assertMessage(MSG_KEY1, Locale.CANADA, BASENAME6, MSG_KEY1);
+    }
 }
