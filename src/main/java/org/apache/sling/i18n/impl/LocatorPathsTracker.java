@@ -62,7 +62,7 @@ class LocatorPathsTracker implements BundleTrackerCustomizer<Set<LocatorPaths>> 
                             pathsSet = new HashSet<>();
                         }
 
-                        // used optional depth value is supplied (1 by default)
+                        // use optional depth value if supplied (or 1 by default)
                         int traversalDepth = 1;
                         String depth = entry.getAttributeValue(ATTR_DEPTH);
                         if (depth != null && !depth.isEmpty()) {

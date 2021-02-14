@@ -172,7 +172,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      * Add a set of paths to the set that are inspected to
      * look for resource bundle resources
      *
-     * @param parentPathsSet set of locator paths to check
+     * @param locatorPathsSet set of locator paths to check
      */
     public void registerLocatorPaths(Set<LocatorPaths> locatorPathsSet) {
         this.locatorPaths.addAll(locatorPathsSet);
@@ -183,7 +183,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      * Remove a set of paths from the set that are inspected to
      * look for resource bundle resources
      *
-     * @param parentPathsSet set of locator paths to no longer check
+     * @param locatorPathsSet set of locator paths to no longer check
      */
     public void unregisterLocatorPaths(Set<LocatorPaths> locatorPathsSet) {
         this.locatorPaths.removeAll(locatorPathsSet);
