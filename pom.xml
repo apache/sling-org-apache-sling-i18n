@@ -24,7 +24,7 @@
     <parent>
         <groupId>org.apache.sling</groupId>
         <artifactId>sling-bundle-parent</artifactId>
-        <version>38</version>
+        <version>40</version>
         <relativePath />
     </parent>
 
@@ -35,7 +35,9 @@
     <description>Support for creating Java I18N ResourceBundles from repository resources.</description>
 
     <properties>
+        <project.build.outputTimestamp>2020-10-15T22:24:47Z</project.build.outputTimestamp>
         <org.ops4j.pax.exam.version>4.13.3</org.ops4j.pax.exam.version>
+        <jackrabbit.version>2.14.3</jackrabbit.version>
     </properties>
 
     <scm>
@@ -47,6 +49,15 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.rat</groupId>
+                <artifactId>apache-rat-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*.json.props</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>biz.aQute.bnd</groupId>
                 <artifactId>bnd-maven-plugin</artifactId>
@@ -148,7 +159,7 @@
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
             <artifactId>jackrabbit-jcr-commons</artifactId>
-            <version>2.2.4</version>
+            <version>${jackrabbit.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -201,31 +212,58 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>1.10.19</version>
+            <version>3.3.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.powermock</groupId>
             <artifactId>powermock-module-junit4</artifactId>
-            <version>1.6.4</version>
+            <version>2.0.9</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.powermock</groupId>
-            <artifactId>powermock-api-mockito</artifactId>
-            <version>1.6.4</version>
+        <groupId>org.powermock</groupId>
+            <artifactId>powermock-api-mockito2</artifactId>
+            <version>2.0.9</version>
+            <scope>test</scope>
+        </dependency>
+        
+        <!-- workaround SLING-7159 - the jackrabbit version from o.a.sling.commons.testing is not compatible with java9+. 
+                remove this after the deprecated dependency to o.a.sling.commons.testing has been replaced -->
+        <dependency>
+            <groupId>org.apache.jackrabbit</groupId>
+            <artifactId>jackrabbit-api</artifactId>
+            <version>${jackrabbit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- workaround SLING-7159 - the jackrabbit version from o.a.sling.commons.testing is not compatible with java9+. 
+                remove this after the deprecated dependency to o.a.sling.commons.testing has been replaced -->
+        <dependency>
+            <groupId>org.apache.jackrabbit</groupId>
+            <artifactId>jackrabbit-core</artifactId>
+            <version>${jackrabbit.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.sling</groupId>
             <artifactId>org.apache.sling.commons.testing</artifactId>
-            <version>2.0.14</version>
+            <version>2.1.2</version>
             <scope>test</scope>
             <exclusions>
                 <!-- slf4j simple implementation logs INFO + higher to stdout (we don't want that behaviour) -->
                 <exclusion>
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-simple</artifactId>
+                </exclusion>
+                <!-- workaround SLING-7159 - the jackrabbit version is not compatible with java9+ 
+                       so exclude these here and declare newer version of jackrabbit artifacts above. -->
+                <exclusion>
+                    <groupId>org.apache.jackrabbit</groupId>
+                    <artifactId>jackrabbit-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.jackrabbit</groupId>
+                    <artifactId>jackrabbit-core</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>

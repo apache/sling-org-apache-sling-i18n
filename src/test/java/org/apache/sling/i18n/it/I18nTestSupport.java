@@ -21,11 +21,14 @@ package org.apache.sling.i18n.it;
 import org.apache.sling.testing.paxexam.TestSupport;
 import org.ops4j.pax.exam.Configuration;
 import org.ops4j.pax.exam.Option;
+import org.ops4j.pax.exam.options.ModifiableCompositeOption;
+import org.ops4j.pax.exam.options.extra.VMOption;
 
 import static org.apache.sling.testing.paxexam.SlingOptions.slingQuickstartOakTar;
 import static org.ops4j.pax.exam.CoreOptions.composite;
 import static org.ops4j.pax.exam.CoreOptions.junitBundles;
 import static org.ops4j.pax.exam.CoreOptions.options;
+import static org.ops4j.pax.exam.CoreOptions.vmOption;
 import static org.ops4j.pax.exam.cm.ConfigurationAdminOptions.factoryConfiguration;
 import static org.ops4j.pax.exam.cm.ConfigurationAdminOptions.newConfiguration;
 
@@ -48,7 +51,9 @@ public abstract class I18nTestSupport extends TestSupport {
             newConfiguration("org.apache.sling.jcr.base.internal.LoginAdminWhitelist")
                 .put("whitelist.bundles.regexp", "PAXEXAM-PROBE-.*")
                 .asOption(),
-            junitBundles()
+            junitBundles(),
+            optionalRemoteDebug(),
+            optionalJacocoCommand()            
         );
     }
 
@@ -60,4 +65,30 @@ public abstract class I18nTestSupport extends TestSupport {
         );
     }
 
+    /**
+     * Optionally configure jacoco vmOption supplied by the "jacoco.command"
+     * system property.
+     */
+    protected ModifiableCompositeOption optionalJacocoCommand() {
+        VMOption option = null;
+        String property = System.getProperty("jacoco.command");
+        if (property != null) {
+            option = vmOption(property);
+        }
+        return composite(option);
+    }
+
+    /**
+     * Optionally configure remote debugging on the port supplied by the "debugPort"
+     * system property.
+     */
+    protected ModifiableCompositeOption optionalRemoteDebug() {
+        VMOption option = null;
+        String property = System.getProperty("debugPort");
+        if (property != null) {
+            option = vmOption(String.format("-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=%s", property));
+        }
+        return composite(option);
+    }
+    
 }

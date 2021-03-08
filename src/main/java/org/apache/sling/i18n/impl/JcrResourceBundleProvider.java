@@ -37,6 +37,7 @@ import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 
@@ -52,6 +53,7 @@ import org.apache.sling.commons.scheduler.ScheduleOptions;
 import org.apache.sling.commons.scheduler.Scheduler;
 import org.apache.sling.i18n.ResourceBundleProvider;
 import org.apache.sling.serviceusermapping.ServiceUserMapped;
+import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceRegistration;
@@ -62,6 +64,7 @@ import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+import org.osgi.util.tracker.BundleTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -161,6 +164,31 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     private boolean preloadBundles;
 
     private long invalidationDelay;
+
+    private BundleTracker<Set<LocatorPaths>> locatorPathsTracker;
+    private List<LocatorPaths> locatorPaths = new CopyOnWriteArrayList<>();
+
+    /**
+     * Add a set of paths to the set that are inspected to
+     * look for resource bundle resources
+     *
+     * @param locatorPathsSet set of locator paths to check
+     */
+    public void registerLocatorPaths(Set<LocatorPaths> locatorPathsSet) {
+        this.locatorPaths.addAll(locatorPathsSet);
+        clearCache();
+    }
+
+    /**
+     * Remove a set of paths from the set that are inspected to
+     * look for resource bundle resources
+     *
+     * @param locatorPathsSet set of locator paths to no longer check
+     */
+    public void unregisterLocatorPaths(Set<LocatorPaths> locatorPathsSet) {
+        this.locatorPaths.removeAll(locatorPathsSet);
+        clearCache();
+    }
 
     private ResourceResolver createResourceResolver() throws LoginException {
         return resourceResolverFactory.getServiceResourceResolver(null);
@@ -405,6 +433,11 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
         this.bundleContext = context;
         this.invalidationDelay = config.invalidation_delay();
+
+        locatorPathsTracker = new BundleTracker<>(this.bundleContext,
+                Bundle.ACTIVE, new LocatorPathsTracker(this));
+        locatorPathsTracker.open();
+
         if (this.resourceResolverFactory != null) { // this is only null during test execution!
             scheduleReloadBundles(false);
         }
@@ -413,6 +446,11 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     @Deactivate
     protected void deactivate() {
+        if (locatorPathsTracker != null) {
+            locatorPathsTracker.close();
+            locatorPathsTracker = null;
+        }
+
         clearCache();
         this.bundleContext = null;
     }
@@ -527,7 +565,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      *             is not available to access the resources.
      */
     private JcrResourceBundle createResourceBundle(final ResourceResolver resolver, final String baseName, final Locale locale) {
-        final JcrResourceBundle bundle = new JcrResourceBundle(locale, baseName, resolver);
+        final JcrResourceBundle bundle = new JcrResourceBundle(locale, baseName, resolver, locatorPaths);
 
         // set parent resource bundle
         Locale parentLocale = getParentLocale(locale);

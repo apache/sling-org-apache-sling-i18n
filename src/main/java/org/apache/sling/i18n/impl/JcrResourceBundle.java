@@ -21,7 +21,7 @@ package org.apache.sling.i18n.impl;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
@@ -76,13 +76,18 @@ public class JcrResourceBundle extends ResourceBundle {
 
     JcrResourceBundle(final Locale locale, final String baseName,
             final ResourceResolver resourceResolver) {
+        this(locale, baseName, resourceResolver, Collections.<LocatorPaths>emptyList());
+    }
+
+    JcrResourceBundle(final Locale locale, final String baseName,
+            final ResourceResolver resourceResolver, List<LocatorPaths> locatorPaths) {
         this.locale = locale;
         this.baseName = baseName;
 
         log.info("Finding all dictionaries for '{}' (basename: {}) ...", locale, baseName == null ? "<none>" : baseName);
 
         final long start = System.currentTimeMillis();
-        final Set<String> roots = loadPotentialLanguageRoots(resourceResolver, locale, baseName);
+        final Set<String> roots = loadPotentialLanguageRoots(resourceResolver, locale, baseName, locatorPaths);
         this.resources = loadFully(resourceResolver, roots, this.languageRoots);
 
         if (log.isInfoEnabled()) {
@@ -318,37 +323,32 @@ public class JcrResourceBundle extends ResourceBundle {
         this.scanForSlingMessages(dictionaryResource, targetDictionary);
     }
 
-    private Set<String> loadPotentialLanguageRoots(ResourceResolver resourceResolver, Locale locale, String baseName) {
-        final String localeString = locale.toString();
-        final String localeStringLower = localeString.toLowerCase();
-        final String localeRFC4646String = toRFC4646String(locale);
-        final String localeRFC4646StringLower = localeRFC4646String.toLowerCase();
-
+    private Set<String> loadPotentialLanguageRoots(ResourceResolver resourceResolver, Locale locale, final String baseName, Collection<LocatorPaths> locatorPaths) {
         final Set<String> paths = new LinkedHashSet<>();
+
+        PotentialLanguageRootCheck check = new PotentialLanguageRootCheck(baseName, locale);
+
+        // first consider resource bundles in the JCR repository
         final Iterator<Resource> bundles = resourceResolver.findResources(QUERY_LANGUAGE_ROOTS, "xpath");
         while (bundles.hasNext()) {
             Resource bundle = bundles.next();
-            ValueMap properties = bundle.adaptTo(ValueMap.class);
-            String language = properties.get(PROP_LANGUAGE, String.class);
-            if (language != null && language.length() > 0) {
-                if (language.equals(localeString)
-                        || language.equals(localeStringLower)
-                        || language.equals(localeRFC4646String)
-                        || language.equals(localeRFC4646StringLower)) {
-                    // basename might be a multivalue (see https://issues.apache.org/jira/browse/SLING-4547)
-                    String[] baseNames = properties.get(PROP_BASENAME, new String[]{});
-                    if (baseName == null || Arrays.asList(baseNames).contains(baseName)) {
-                        paths.add(bundle.getPath());
-                    }
+            if (check.isResourceBundle(bundle)) {
+                paths.add(bundle.getPath());
+            }
+        }
+
+        if (locatorPaths != null && !locatorPaths.isEmpty()) {
+            // next traverse the ancestors of all of the locator paths
+            LocatorPathsVisitor visitor = new LocatorPathsVisitor(check, paths);
+            for (LocatorPaths locator : locatorPaths) {
+                Resource parentResource = resourceResolver.getResource(locator.getPath());
+                if (parentResource != null) {
+                    visitor.accept(parentResource, locator.getTraverseDepth());
                 }
             }
         }
-        return Collections.unmodifiableSet(paths);
-    }
 
-    // Would be nice if Locale.toString() output RFC 4646, but it doesn't
-    private static String toRFC4646String(Locale locale) {
-        return locale.toString().replace('_', '-');
+        return Collections.unmodifiableSet(paths);
     }
 
     @Override
