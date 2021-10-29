@@ -111,6 +111,10 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
                 description = "In case of dictionary change events the cached "+
                         "resource bundle becomes invalid after the given delay (in ms). ")
         long invalidation_delay() default 5000;
+        
+        @AttributeDefinition(name="Excluded paths",
+                description="Do not check these paths for new ResourceBundles")
+        String[] excluded_paths() default {"/var/eventing"};
     }
 
     @Reference
@@ -167,6 +171,9 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     private BundleTracker<Set<LocatorPaths>> locatorPathsTracker;
     private List<LocatorPaths> locatorPaths = new CopyOnWriteArrayList<>();
+    
+    // Ignore events in these paths
+    private String[] excludeddPaths;
 
     /**
      * Add a set of paths to the set that are inspected to
@@ -240,6 +247,10 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         final ChangeStatus status = new ChangeStatus();
         try {
             for (final ResourceChange change : changes) {
+                
+                if (canIgnoreChange(change)) {
+                    continue;
+                }
                 this.onChange(status, change);
                 // if we need to reload all, we can skip all other events
                 if ( status.reloadAll ) {
@@ -261,6 +272,17 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             }
         }
     }
+    
+    // skip if the change happens within a path configured in excludedPaths 
+    protected boolean canIgnoreChange(final ResourceChange change) {
+        for (String excludedPath: excludeddPaths) {
+            if (change.getPath().startsWith(excludedPath)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
 
     private void onChange(final ChangeStatus status, final ResourceChange change)
     throws LoginException {
@@ -433,6 +455,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
         this.bundleContext = context;
         this.invalidationDelay = config.invalidation_delay();
+        this.excludeddPaths = config.excluded_paths();
 
         locatorPathsTracker = new BundleTracker<>(this.bundleContext,
                 Bundle.ACTIVE, new LocatorPathsTracker(this));

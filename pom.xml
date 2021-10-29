@@ -316,5 +316,11 @@
             <version>${org.ops4j.pax.exam.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+          <groupId>org.apache.sling</groupId>
+          <artifactId>org.apache.sling.testing.sling-mock.junit4</artifactId>
+          <version>3.0.0</version>
+          <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
