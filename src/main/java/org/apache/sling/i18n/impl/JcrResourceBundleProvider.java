@@ -113,7 +113,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         long invalidation_delay() default 5000;
         
         @AttributeDefinition(name="Excluded paths",
-                description="Do not check these paths for new ResourceBundles")
+                description="Events happening in paths starting with one of these values will be ignored")
         String[] excluded_paths() default {"/var/eventing"};
     }
 
@@ -165,15 +165,10 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      */
     private final Map<Key, ServiceRegistration<ResourceBundle>> bundleServiceRegistrations = new HashMap<>();
 
-    private boolean preloadBundles;
-
-    private long invalidationDelay;
-
     private BundleTracker<Set<LocatorPaths>> locatorPathsTracker;
     private List<LocatorPaths> locatorPaths = new CopyOnWriteArrayList<>();
     
-    // Ignore events in these paths
-    private String[] excludeddPaths;
+    Config config;
 
     /**
      * Add a set of paths to the set that are inspected to
@@ -275,7 +270,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     
     // skip if the change happens within a path configured in excludedPaths 
     protected boolean canIgnoreChange(final ResourceChange change) {
-        for (String excludedPath: excludeddPaths) {
+        for (String excludedPath: this.config.excluded_paths()) {
             if (change.getPath().startsWith(excludedPath)) {
                 return true;
             }
@@ -377,7 +372,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         // defer this job
         final ScheduleOptions options;
         if (withDelay) {
-            options = scheduler.AT(new Date(System.currentTimeMillis() + invalidationDelay));
+            options = scheduler.AT(new Date(System.currentTimeMillis() + this.config.invalidation_delay()));
         } else {
             options = scheduler.NOW();
         }
@@ -396,7 +391,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         final Key key = new Key(bundle.getBaseName(), bundle.getLocale());
 
         // defer this job
-        ScheduleOptions options = scheduler.AT(new Date(System.currentTimeMillis() + invalidationDelay));
+        ScheduleOptions options = scheduler.AT(new Date(System.currentTimeMillis() + this.config.invalidation_delay()));
         final String jobName = "ResourceBundleProvider: reload bundle with key " + key.toString();
         scheduledJobNames.add(jobName);
         options.name(jobName);
@@ -411,7 +406,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     void reloadBundle(final Key key) {
         log.info("Reloading resource bundle for {}", key);
-        if (!this.preloadBundles) {
+        if (!this.config.preload_bundles()) {
             // remove bundle from cache
             resourceBundleCache.remove(key);
             // unregister bundle
@@ -434,7 +429,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()));
         }
 
-        if (preloadBundles) {
+        if (this.config.preload_bundles()) {
             // reload the bundle from the repository (will also fill cache and register as a service)
             getResourceBundleInternal(null, key.baseName, key.locale, true);
         }
@@ -449,13 +444,11 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      */
     @Activate
     protected void activate(final BundleContext context, final Config config) throws LoginException {
+        
+        this.config = config;
         final String localeString = config.locale_default();
         this.defaultLocale = toLocale(localeString);
-        this.preloadBundles = config.preload_bundles();
-
         this.bundleContext = context;
-        this.invalidationDelay = config.invalidation_delay();
-        this.excludeddPaths = config.excluded_paths();
 
         locatorPathsTracker = new BundleTracker<>(this.bundleContext,
                 Bundle.ACTIVE, new LocatorPathsTracker(this));
@@ -662,7 +655,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     }
 
     private void preloadBundles() {
-        if (preloadBundles) {
+        if (this.config.preload_bundles()) {
             try ( final ResourceResolver resolver = createResourceResolver() ) {
                 final Iterator<Map<String, Object>> bundles = resolver.queryResources(
                     JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
