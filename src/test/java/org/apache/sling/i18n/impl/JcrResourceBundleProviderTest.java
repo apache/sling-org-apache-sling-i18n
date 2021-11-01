@@ -18,13 +18,28 @@
  */
 package org.apache.sling.i18n.impl;
 
-import java.util.Locale;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+import org.apache.sling.api.resource.observation.ResourceChange;
+import org.apache.sling.commons.scheduler.ScheduleOptions;
+import org.apache.sling.commons.scheduler.Scheduler;
+import org.apache.sling.serviceusermapping.ServiceUserMapped;
+import org.apache.sling.testing.mock.sling.junit.SlingContext;
 import org.junit.Assert;
+import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 
 public class JcrResourceBundleProviderTest {
+    
+    @Rule
+    public final SlingContext context = new SlingContext();
 
     @Test
     public void testToLocale() {
@@ -93,6 +108,34 @@ public class JcrResourceBundleProviderTest {
 
         // Lowercase Private use Country 'xa'
         Assert.assertEquals(new Locale(Locale.GERMAN.getLanguage(), "XA"), JcrResourceBundleProvider.toLocale("de_xa"));
+    }
+    
+    @Test
+    public void testPathExclusions() {
+        JcrResourceBundleProvider sut = new JcrResourceBundleProvider();
+        Map<String,Object> props = new HashMap<>();
+        props.put("excluded.paths", new String[] {"/excluded/path"});
+        
+        Scheduler scheduler = Mockito.mock(Scheduler.class);
+        Mockito.when(scheduler.schedule(Mockito.any(), Mockito.any())).thenReturn(false); // is ignored
+        Mockito.when(scheduler.AT(Mockito.any())).thenReturn(Mockito.mock(ScheduleOptions.class));
+        Mockito.when(scheduler.NOW()).thenReturn(Mockito.mock(ScheduleOptions.class));
+        context.registerService(Scheduler.class,scheduler);
+        
+        ServiceUserMapped serviceUserMapped = Mockito.mock(ServiceUserMapped.class);
+        context.registerService(ServiceUserMapped.class,serviceUserMapped);
+        
+        context.registerInjectActivateService(sut, props);
+        ResourceChange c1 = Mockito.mock(ResourceChange.class);
+        Mockito.when(c1.getPath()).thenReturn("/excluded/path");
+        ResourceChange c2 = Mockito.mock(ResourceChange.class);
+        Mockito.when(c2.getPath()).thenReturn("/another/path");
+        ResourceChange c3 = Mockito.mock(ResourceChange.class);
+        Mockito.when(c3.getPath()).thenReturn("/excluded/path/node");
+        
+        assertTrue(sut.canIgnoreChange(c1));
+        assertFalse(sut.canIgnoreChange(c2));
+        assertTrue(sut.canIgnoreChange(c3));
     }
 
 }

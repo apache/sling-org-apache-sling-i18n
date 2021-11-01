@@ -104,6 +104,11 @@ public class ConcurrentJcrResourceBundleLoadingTest {
             public long invalidation_delay() {
                 return 5000;
             }
+            
+            @Override
+            public String[] excluded_paths() {
+                return new String[] {"/var/eventing"};
+            }
         });
         doReturn(null).when(provider, "createResourceResolver");
         doReturn(english).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
