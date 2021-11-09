@@ -19,7 +19,7 @@
 package org.apache.sling.i18n.impl;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertSame;
+import static org.junit.Assert.fail;
 import static org.mockito.AdditionalMatchers.or;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -36,10 +36,12 @@ import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.i18n.impl.JcrResourceBundleProvider.Key;
@@ -104,7 +106,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
             public long invalidation_delay() {
                 return 5000;
             }
-            
+
             @Override
             public String[] excluded_paths() {
                 return new String[] {"/var/eventing"};
@@ -194,39 +196,49 @@ public class ConcurrentJcrResourceBundleLoadingTest {
     public void newBundleReplacesOldBundleAfterReload() throws Exception {
         final ResourceBundle oldBundle = provider.getResourceBundle(Locale.ENGLISH);
         final ResourceBundle newBundle = mock(JcrResourceBundle.class);
-        final AtomicBoolean newBundleReady = new AtomicBoolean(false);
 
-        doAnswer(new Answer<ResourceBundle>() {
-            @Override public ResourceBundle answer(InvocationOnMock invocationOnMock) throws Throwable {
-                Thread.sleep(1000);
-                newBundleReady.set(true);
-                return newBundle;
-            }
+        doAnswer(invocationOnMock -> {
+            Thread.sleep(1000);
+            return newBundle;
         }).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
 
-        Executors.newScheduledThreadPool(1).scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                ResourceBundle expected = newBundleReady.get() ? newBundle : oldBundle;
-                assertSame(expected, provider.getResourceBundle(Locale.ENGLISH));
-            }
-        }, 0, 200, TimeUnit.MILLISECONDS);
+        ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
+        ScheduledFuture<?> gate = executorService.scheduleAtFixedRate(
+            () -> {
+                ResourceBundle currentBundle = provider.getResourceBundle(Locale.ENGLISH);
+                if (currentBundle == newBundle) {
+                    // Shutdown the executor once we got the new ResourceBundle. This will cancel the future and opens the gate below.
+                    // Do not assert the returned bundle directly here, as this may become flaky when the bundle returned by the
+                    // mock above was returned but not yet put into the cache.
+                    executorService.shutdown();
+                }
+
+            },
+            // start with an initial delay to not call getResourceBundle again before we call reloadBundle below
+            200,
+            200,
+            TimeUnit.MILLISECONDS);
 
         provider.reloadBundle(new Key(null, Locale.ENGLISH));
 
-        // we expect getResourceBundleInternal() called once in the beginning of the test and once again after reloading the bundle.
-        final int expectedGetResourceBundleInternal = 2;
-        VerificationMode verificationMode;
+        try {
+            // wait until the scheduled future gets canceled by shutting down the executor service
+            // this means the new bundle got returned and is in the cache
+            gate.get(5000, TimeUnit.MILLISECONDS);
+            fail("expected cancellation");
+        } catch (CancellationException ex) {
+            // CancellationException expected
 
-        if (preload) {
-            // when preloading the calls to getResourceBundleInternal are non-blocking and so more calls will happen while reloading.
-            // assuming at least one more
-            verificationMode = atLeast(expectedGetResourceBundleInternal + 1);
-        } else {
-            verificationMode = times(expectedGetResourceBundleInternal);
+            // we expect getResourceBundleInternal() called once in the beginning of the test and once again after reloading the bundle.
+            final int expectedGetResourceBundleInternal = 2;
+            VerificationMode verificationMode = preload
+                // when preloading the calls to getResourceBundleInternal are non-blocking and so more calls will happen while reloading.
+                // assuming at least one more
+                ? atLeast(expectedGetResourceBundleInternal + 1)
+                : times(expectedGetResourceBundleInternal);
+
+            verifyPrivate(provider, verificationMode).invoke("getResourceBundleInternal",
+                or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH), anyBoolean());
         }
-
-        verifyPrivate(provider, verificationMode)
-                .invoke("getResourceBundleInternal", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH), anyBoolean());
     }
 }
