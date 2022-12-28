@@ -75,11 +75,6 @@ public class JcrResourceBundle extends ResourceBundle {
     private final Set<String> languageRoots = new HashSet<>();
 
     JcrResourceBundle(final Locale locale, final String baseName,
-            final ResourceResolver resourceResolver) {
-        this(locale, baseName, resourceResolver, Collections.<LocatorPaths>emptyList());
-    }
-
-    JcrResourceBundle(final Locale locale, final String baseName,
             final ResourceResolver resourceResolver, List<LocatorPaths> locatorPaths) {
         this.locale = locale;
         this.baseName = baseName;

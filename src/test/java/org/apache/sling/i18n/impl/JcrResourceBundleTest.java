@@ -470,29 +470,29 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
     // ---------------------------------------------------------------< tests >
 
     public void test_getString() {
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         for (Message msg : MESSAGES_DE.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
 
-        bundle = new JcrResourceBundle(new Locale("en", "us"), null, resolver);
+        bundle = new JcrResourceBundle(new Locale("en", "us"), null, resolver, null);
         for (Message msg : MESSAGES_EN_DASH_US.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
 
-        bundle = new JcrResourceBundle(new Locale("en", "uk"), null, resolver);
+        bundle = new JcrResourceBundle(new Locale("en", "uk"), null, resolver, null);
         for (Message msg : MESSAGES_EN_UNDERSCORE_UK.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
 
-        bundle = new JcrResourceBundle(new Locale("en", "au"), null, resolver);
+        bundle = new JcrResourceBundle(new Locale("en", "au"), null, resolver, null);
         for (Message msg : MESSAGES_EN_UNDERSCORE_AU.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
     }
 
     public void test_getObject() {
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         for (Message msg : MESSAGES_DE.values()) {
             assertEquals(msg.message, (String) bundle.getObject(msg.key));
         }
@@ -500,13 +500,13 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
     public void test_handle_missing_key() {
         // test if key is returned if no entry found in repo
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         bundle.setParent(new RootResourceBundle());
         assertEquals("missing", bundle.getString("missing"));
     }
 
     public void test_getKeys() {
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         Enumeration<String> keys = bundle.getKeys();
         int counter = 0;
         while (keys.hasMoreElements()) {
@@ -519,8 +519,8 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
     public void test_bundle_parenting() {
         // set parent of resource bundle, test if passed through
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
-        JcrResourceBundle parentBundle = new JcrResourceBundle(new Locale("en"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle parentBundle = new JcrResourceBundle(new Locale("en"), null, resolver, null);
         bundle.setParent(parentBundle);
         parentBundle.setParent(new RootResourceBundle());
 
@@ -540,7 +540,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test getString
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         for (Message msg : MESSAGES_DE_APPS.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -571,7 +571,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test if /content dictionary is read at all
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         for (Message msg : MESSAGES_DE.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -587,7 +587,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test if /libs (something in the search path) overlays /content (outside the search path)
-        bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         for (Message msg : MESSAGES_DE_APPS.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -616,13 +616,13 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test getString
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), "FOO", resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), "FOO", resolver, null);
         for (Message msg : MESSAGES_DE_BASENAME.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
         
         // test getString
-        bundle = new JcrResourceBundle(new Locale("de"), "BAR", resolver);
+        bundle = new JcrResourceBundle(new Locale("de"), "BAR", resolver, null);
         for (Message msg : MESSAGES_DE_BASENAME.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -661,7 +661,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test getString
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
         for (Message msg : MESSAGES_DE_APPS.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
