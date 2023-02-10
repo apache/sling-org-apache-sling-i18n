@@ -106,7 +106,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
 
             @Override
             public String[] included_paths() {
-                return new String[] {"/"};
+                return new String[] {"/libs", "/apps"};
             }
 
             @Override
@@ -196,7 +196,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
      */
     @Test
     public void newBundleReplacesOldBundleAfterReload() throws Exception {
-        final ResourceBundle oldBundle = provider.getResourceBundle(Locale.ENGLISH);
+        provider.getResourceBundle(Locale.ENGLISH);
         final ResourceBundle newBundle = mock(JcrResourceBundle.class);
         final CountDownLatch newBundleReturned = new CountDownLatch(1);
 

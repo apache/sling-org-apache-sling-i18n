@@ -107,7 +107,6 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public Resource getResource(Resource base, String path) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -163,13 +162,11 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public String map(HttpServletRequest request, String resourcePath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public String map(String resourcePath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -218,25 +215,21 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public Resource resolve(HttpServletRequest request, String absPath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public Resource resolve(HttpServletRequest request) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public Resource resolve(String absPath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public <AdapterType> AdapterType adaptTo(Class<AdapterType> type) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -272,50 +265,39 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public Iterable<Resource> getChildren(Resource parent) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public void delete(Resource resource) throws PersistenceException {
-                // TODO Auto-generated method stub
-
             }
 
             @Override
             public Resource create(Resource parent, String name,
                     Map<String, Object> properties) throws PersistenceException {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public void revert() {
-                // TODO Auto-generated method stub
-
             }
 
             @Override
             public void commit() throws PersistenceException {
-                // TODO Auto-generated method stub
-
             }
 
             @Override
             public boolean hasChanges() {
-                // TODO Auto-generated method stub
                 return false;
             }
 
             @Override
             public String getParentResourceType(Resource resource) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public String getParentResourceType(String resourceType) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -326,31 +308,26 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public void refresh() {
-                // TODO Auto-generated method stub
 
             }
 
             @Override
             public Resource getParent(Resource child) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public boolean hasChildren(Resource resource) {
-                // TODO Auto-generated method stub
                 return false;
             }
 
             @Override
             public Resource copy(String srcAbsPath, String destAbsPath) throws PersistenceException {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public Resource move(String srcAbsPath, String destAbsPath) throws PersistenceException {
-                // TODO Auto-generated method stub
                 return null;
             }
         };
@@ -699,7 +676,6 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
         @Override
         public String getResourceSuperType() {
-            // TODO Auto-generated method stub
             return null;
         }
 
