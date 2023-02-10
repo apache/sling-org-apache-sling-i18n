@@ -107,7 +107,6 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public Resource getResource(Resource base, String path) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -163,13 +162,11 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public String map(HttpServletRequest request, String resourcePath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public String map(String resourcePath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -218,25 +215,21 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public Resource resolve(HttpServletRequest request, String absPath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public Resource resolve(HttpServletRequest request) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public Resource resolve(String absPath) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public <AdapterType> AdapterType adaptTo(Class<AdapterType> type) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -272,50 +265,39 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public Iterable<Resource> getChildren(Resource parent) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public void delete(Resource resource) throws PersistenceException {
-                // TODO Auto-generated method stub
-
             }
 
             @Override
             public Resource create(Resource parent, String name,
                     Map<String, Object> properties) throws PersistenceException {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public void revert() {
-                // TODO Auto-generated method stub
-
             }
 
             @Override
             public void commit() throws PersistenceException {
-                // TODO Auto-generated method stub
-
             }
 
             @Override
             public boolean hasChanges() {
-                // TODO Auto-generated method stub
                 return false;
             }
 
             @Override
             public String getParentResourceType(Resource resource) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public String getParentResourceType(String resourceType) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
@@ -326,31 +308,26 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
             @Override
             public void refresh() {
-                // TODO Auto-generated method stub
 
             }
 
             @Override
             public Resource getParent(Resource child) {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public boolean hasChildren(Resource resource) {
-                // TODO Auto-generated method stub
                 return false;
             }
 
             @Override
             public Resource copy(String srcAbsPath, String destAbsPath) throws PersistenceException {
-                // TODO Auto-generated method stub
                 return null;
             }
 
             @Override
             public Resource move(String srcAbsPath, String destAbsPath) throws PersistenceException {
-                // TODO Auto-generated method stub
                 return null;
             }
         };
@@ -470,29 +447,29 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
     // ---------------------------------------------------------------< tests >
 
     public void test_getString() {
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
 
-        bundle = new JcrResourceBundle(new Locale("en", "us"), null, resolver, null);
+        bundle = new JcrResourceBundle(new Locale("en", "us"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_EN_DASH_US.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
 
-        bundle = new JcrResourceBundle(new Locale("en", "uk"), null, resolver, null);
+        bundle = new JcrResourceBundle(new Locale("en", "uk"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_EN_UNDERSCORE_UK.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
 
-        bundle = new JcrResourceBundle(new Locale("en", "au"), null, resolver, null);
+        bundle = new JcrResourceBundle(new Locale("en", "au"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_EN_UNDERSCORE_AU.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
     }
 
     public void test_getObject() {
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE.values()) {
             assertEquals(msg.message, (String) bundle.getObject(msg.key));
         }
@@ -500,13 +477,13 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
     public void test_handle_missing_key() {
         // test if key is returned if no entry found in repo
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         bundle.setParent(new RootResourceBundle());
         assertEquals("missing", bundle.getString("missing"));
     }
 
     public void test_getKeys() {
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         Enumeration<String> keys = bundle.getKeys();
         int counter = 0;
         while (keys.hasMoreElements()) {
@@ -519,8 +496,8 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
     public void test_bundle_parenting() {
         // set parent of resource bundle, test if passed through
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
-        JcrResourceBundle parentBundle = new JcrResourceBundle(new Locale("en"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
+        JcrResourceBundle parentBundle = new JcrResourceBundle(new Locale("en"), null, resolver, null, new PathFilter());
         bundle.setParent(parentBundle);
         parentBundle.setParent(new RootResourceBundle());
 
@@ -540,7 +517,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test getString
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE_APPS.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -571,7 +548,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test if /content dictionary is read at all
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -587,7 +564,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test if /libs (something in the search path) overlays /content (outside the search path)
-        bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE_APPS.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -616,13 +593,13 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test getString
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), "FOO", resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), "FOO", resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE_BASENAME.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
         
         // test getString
-        bundle = new JcrResourceBundle(new Locale("de"), "BAR", resolver, null);
+        bundle = new JcrResourceBundle(new Locale("de"), "BAR", resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE_BASENAME.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -661,7 +638,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         getSession().save();
 
         // test getString
-        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null);
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE_APPS.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
@@ -699,7 +676,6 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
         @Override
         public String getResourceSuperType() {
-            // TODO Auto-generated method stub
             return null;
         }
 

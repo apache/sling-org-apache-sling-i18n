@@ -20,6 +20,7 @@ package org.apache.sling.i18n.impl;
 
 import static org.apache.sling.i18n.impl.JcrResourceBundle.PROP_BASENAME;
 import static org.apache.sling.i18n.impl.JcrResourceBundle.PROP_LANGUAGE;
+import static org.apache.sling.i18n.impl.JcrResourceBundle.PROP_PATH;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -61,9 +62,7 @@ import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
-import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
-import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 import org.osgi.util.tracker.BundleTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,8 +82,11 @@ import org.slf4j.LoggerFactory;
             ResourceChangeListener.CHANGES + "=REMOVED",
             ResourceChangeListener.CHANGES + "=CHANGED"
     })
-@Designate(ocd = JcrResourceBundleProvider.Config.class)
+@Designate(ocd = Config.class)
 public class JcrResourceBundleProvider implements ResourceBundleProvider, ResourceChangeListener, ExternalResourceChangeListener {
+
+    /** default log */
+    private final Logger log = LoggerFactory.getLogger(getClass());
 
     /**
      * A regular expression pattern matching all custom country codes.
@@ -92,39 +94,11 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      */
     private static final Pattern USER_ASSIGNED_COUNTRY_CODES_PATTERN = Pattern.compile("aa|q[m-z]|x[a-z]|zz");
 
-    @ObjectClassDefinition(name ="Apache Sling I18N Resource Bundle Provider",
-            description ="ResourceBundleProvider service which loads the messages from the repository.")
-    public @interface Config {
-
-        @AttributeDefinition(name = "Default Locale",
-            description = "The default locale to assume if none can be "+
-                 "resolved otherwise. This value must be in the form acceptable to the "+
-                 "java.util.Locale class.")
-        String locale_default() default "en";
-
-        @AttributeDefinition(name = "Preload Bundles",
-                description = "Whether or not to eagerly load the resource bundles "+
-                    "on bundle start or a cache invalidation.")
-        boolean preload_bundles() default false;
-
-        @AttributeDefinition(name = "Invalidation Delay",
-                description = "In case of dictionary change events the cached "+
-                        "resource bundle becomes invalid after the given delay (in ms). ")
-        long invalidation_delay() default 5000;
-        
-        @AttributeDefinition(name="Excluded paths",
-                description="Events happening in paths starting with one of these values will be ignored")
-        String[] excluded_paths() default {"/var/eventing"};
-    }
-
     @Reference
     private Scheduler scheduler;
 
     /** job names of scheduled jobs for reloading individual bundles */
     private final Collection<String> scheduledJobNames = Collections.synchronizedList(new ArrayList<String>()) ;
-
-    /** default log */
-    private final Logger log = LoggerFactory.getLogger(getClass());
 
     @Reference
     private ResourceResolverFactory resourceResolverFactory;
@@ -167,8 +141,15 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     private BundleTracker<Set<LocatorPaths>> locatorPathsTracker;
     private List<LocatorPaths> locatorPaths = new CopyOnWriteArrayList<>();
-    
-    Config config;
+
+    /**
+     * Filter to check for allowed paths
+     */
+    private volatile PathFilter pathFilter;
+
+    private volatile boolean preloadBundles;
+
+    private volatile long invalidationDelay;
 
     /**
      * Add a set of paths to the set that are inspected to
@@ -243,7 +224,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         try {
             for (final ResourceChange change : changes) {
                 
-                if (canIgnoreChange(change)) {
+                if (!this.pathFilter.includePath(change.getPath())) {
                     continue;
                 }
                 this.onChange(status, change);
@@ -268,17 +249,6 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         }
     }
     
-    // skip if the change happens within a path configured in excludedPaths 
-    protected boolean canIgnoreChange(final ResourceChange change) {
-        for (String excludedPath: this.config.excluded_paths()) {
-            if (change.getPath().startsWith(excludedPath)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-
     private void onChange(final ChangeStatus status, final ResourceChange change)
     throws LoginException {
         log.debug("onChange: Detecting change {} for path '{}'", change.getType(), change.getPath());
@@ -372,7 +342,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         // defer this job
         final ScheduleOptions options;
         if (withDelay) {
-            options = scheduler.AT(new Date(System.currentTimeMillis() + this.config.invalidation_delay()));
+            options = scheduler.AT(new Date(System.currentTimeMillis() + this.invalidationDelay));
         } else {
             options = scheduler.NOW();
         }
@@ -391,7 +361,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         final Key key = new Key(bundle.getBaseName(), bundle.getLocale());
 
         // defer this job
-        ScheduleOptions options = scheduler.AT(new Date(System.currentTimeMillis() + this.config.invalidation_delay()));
+        ScheduleOptions options = scheduler.AT(new Date(System.currentTimeMillis() + this.invalidationDelay));
         final String jobName = "ResourceBundleProvider: reload bundle with key " + key.toString();
         scheduledJobNames.add(jobName);
         options.name(jobName);
@@ -406,7 +376,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     void reloadBundle(final Key key) {
         log.info("Reloading resource bundle for {}", key);
-        if (!this.config.preload_bundles()) {
+        if (!this.preloadBundles) {
             // remove bundle from cache
             resourceBundleCache.remove(key);
             // unregister bundle
@@ -429,7 +399,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()));
         }
 
-        if (this.config.preload_bundles()) {
+        if (this.preloadBundles) {
             // reload the bundle from the repository (will also fill cache and register as a service)
             getResourceBundleInternal(null, key.baseName, key.locale, true);
         }
@@ -444,27 +414,26 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      */
     @Activate
     protected void activate(final BundleContext context, final Config config) throws LoginException {
-        
-        this.config = config;
-        final String localeString = config.locale_default();
-        this.defaultLocale = toLocale(localeString);
+        this.defaultLocale = toLocale(config.locale_default());
+        this.preloadBundles = config.preload_bundles();
+        this.invalidationDelay = config.invalidation_delay();
+        this.pathFilter = new PathFilter(config.included_paths(), config.excluded_paths());
         this.bundleContext = context;
 
-        locatorPathsTracker = new BundleTracker<>(this.bundleContext,
+        this.locatorPathsTracker = new BundleTracker<>(this.bundleContext,
                 Bundle.ACTIVE, new LocatorPathsTracker(this));
-        locatorPathsTracker.open();
+        this.locatorPathsTracker.open();
 
         if (this.resourceResolverFactory != null) { // this is only null during test execution!
             scheduleReloadBundles(false);
         }
-
     }
 
     @Deactivate
     protected void deactivate() {
-        if (locatorPathsTracker != null) {
-            locatorPathsTracker.close();
-            locatorPathsTracker = null;
+        if (this.locatorPathsTracker != null) {
+            this.locatorPathsTracker.close();
+            this.locatorPathsTracker = null;
         }
 
         clearCache();
@@ -581,7 +550,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      *             is not available to access the resources.
      */
     private JcrResourceBundle createResourceBundle(final ResourceResolver resolver, final String baseName, final Locale locale) {
-        final JcrResourceBundle bundle = new JcrResourceBundle(locale, baseName, resolver, locatorPaths);
+        final JcrResourceBundle bundle = new JcrResourceBundle(locale, baseName, resolver, locatorPaths, this.pathFilter);
 
         // set parent resource bundle
         Locale parentLocale = getParentLocale(locale);
@@ -655,14 +624,14 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     }
 
     private void preloadBundles() {
-        if (this.config.preload_bundles()) {
+        if (this.preloadBundles) {
             try ( final ResourceResolver resolver = createResourceResolver() ) {
                 final Iterator<Map<String, Object>> bundles = resolver.queryResources(
                     JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
                 final Set<Key> usedKeys = new HashSet<>();
                 while (bundles.hasNext()) {
                     final Map<String,Object> bundle = bundles.next();
-                    if (bundle.containsKey(PROP_LANGUAGE)) {
+                    if (bundle.containsKey(PROP_LANGUAGE) && this.pathFilter.includePath(bundle.get(PROP_PATH).toString())) {
                         final Locale locale = toLocale(bundle.get(PROP_LANGUAGE).toString());
                         String baseName = null;
                         if (bundle.containsKey(PROP_BASENAME)) {

@@ -82,11 +82,11 @@ public class ConcurrentJcrResourceBundleLoadingTest {
     @Before
     public void setup() throws Exception {
         provider = spy(new JcrResourceBundleProvider());
-        provider.activate(PowerMockito.mock(BundleContext.class), new JcrResourceBundleProvider.Config() {
+        provider.activate(PowerMockito.mock(BundleContext.class), new Config() {
 
             @Override
             public Class<? extends Annotation> annotationType() {
-                return JcrResourceBundleProvider.Config.class;
+                return Config.class;
             }
 
             @Override
@@ -102,6 +102,11 @@ public class ConcurrentJcrResourceBundleLoadingTest {
             @Override
             public long invalidation_delay() {
                 return 5000;
+            }
+
+            @Override
+            public String[] included_paths() {
+                return new String[] {"/libs", "/apps"};
             }
 
             @Override
@@ -191,7 +196,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
      */
     @Test
     public void newBundleReplacesOldBundleAfterReload() throws Exception {
-        final ResourceBundle oldBundle = provider.getResourceBundle(Locale.ENGLISH);
+        provider.getResourceBundle(Locale.ENGLISH);
         final ResourceBundle newBundle = mock(JcrResourceBundle.class);
         final CountDownLatch newBundleReturned = new CountDownLatch(1);
 
