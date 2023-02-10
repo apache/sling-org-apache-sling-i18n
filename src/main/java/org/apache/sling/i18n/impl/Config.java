@@ -42,10 +42,10 @@ public @interface Config {
     long invalidation_delay() default 5000;
     
     @AttributeDefinition(name="Included paths",
-            description="Translations in paths starting with one of these values will be ignored")
+            description="Translations in paths starting with one of these values will be included, unless they match one of the excluded paths.")
     String[] included_paths() default {"/libs", "/apps"};
 
     @AttributeDefinition(name="Excluded paths",
-            description="Translations in paths starting with one of these values will be ignored")
+            description="Translations in paths starting with one of these values will be excluded.")
     String[] excluded_paths() default {"/var/eventing"};
 }
