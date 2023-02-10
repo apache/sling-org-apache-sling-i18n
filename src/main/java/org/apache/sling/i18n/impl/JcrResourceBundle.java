@@ -64,6 +64,8 @@ public class JcrResourceBundle extends ResourceBundle {
 
     static final String PROP_MIXINS = "jcr:mixinTypes";
 
+    static final String PROP_PATH = "jcr:path";
+
     static final String QUERY_LANGUAGE_ROOTS = "//element(*,mix:language)[@jcr:language]";
 
     private final Map<String, Object> resources;
@@ -75,14 +77,16 @@ public class JcrResourceBundle extends ResourceBundle {
     private final Set<String> languageRoots = new HashSet<>();
 
     JcrResourceBundle(final Locale locale, final String baseName,
-            final ResourceResolver resourceResolver, List<LocatorPaths> locatorPaths) {
+            final ResourceResolver resourceResolver, 
+            final List<LocatorPaths> locatorPaths,
+            final PathFilter filter) {
         this.locale = locale;
         this.baseName = baseName;
 
         log.info("Finding all dictionaries for '{}' (basename: {}) ...", locale, baseName == null ? "<none>" : baseName);
 
         final long start = System.currentTimeMillis();
-        final Set<String> roots = loadPotentialLanguageRoots(resourceResolver, locale, baseName, locatorPaths);
+        final Set<String> roots = loadPotentialLanguageRoots(resourceResolver, locale, baseName, locatorPaths, filter);
         this.resources = loadFully(resourceResolver, roots, this.languageRoots);
 
         if (log.isInfoEnabled()) {
@@ -318,7 +322,11 @@ public class JcrResourceBundle extends ResourceBundle {
         this.scanForSlingMessages(dictionaryResource, targetDictionary);
     }
 
-    private Set<String> loadPotentialLanguageRoots(ResourceResolver resourceResolver, Locale locale, final String baseName, Collection<LocatorPaths> locatorPaths) {
+    private Set<String> loadPotentialLanguageRoots(final ResourceResolver resourceResolver,
+            final Locale locale, 
+            final String baseName,
+            final Collection<LocatorPaths> locatorPaths,
+            final PathFilter filter) {
         final Set<String> paths = new LinkedHashSet<>();
 
         PotentialLanguageRootCheck check = new PotentialLanguageRootCheck(baseName, locale);
@@ -326,19 +334,21 @@ public class JcrResourceBundle extends ResourceBundle {
         // first consider resource bundles in the JCR repository
         final Iterator<Resource> bundles = resourceResolver.findResources(QUERY_LANGUAGE_ROOTS, "xpath");
         while (bundles.hasNext()) {
-            Resource bundle = bundles.next();
-            if (check.isResourceBundle(bundle)) {
+            final Resource bundle = bundles.next();
+            if (filter.includePath(bundle.getPath()) && check.isResourceBundle(bundle)) {
                 paths.add(bundle.getPath());
             }
         }
 
         if (locatorPaths != null && !locatorPaths.isEmpty()) {
             // next traverse the ancestors of all of the locator paths
-            LocatorPathsVisitor visitor = new LocatorPathsVisitor(check, paths);
-            for (LocatorPaths locator : locatorPaths) {
-                Resource parentResource = resourceResolver.getResource(locator.getPath());
-                if (parentResource != null) {
-                    visitor.accept(parentResource, locator.getTraverseDepth());
+            final LocatorPathsVisitor visitor = new LocatorPathsVisitor(check, paths);
+            for (final LocatorPaths locator : locatorPaths) {
+                if ( filter.includePath(locator.getPath())) {
+                    final Resource parentResource = resourceResolver.getResource(locator.getPath());
+                    if (parentResource != null) {
+                        visitor.accept(parentResource, locator.getTraverseDepth());
+                    }    
                 }
             }
         }
