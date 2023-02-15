@@ -631,15 +631,18 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
                 final Set<Key> usedKeys = new HashSet<>();
                 while (bundles.hasNext()) {
                     final Map<String,Object> bundle = bundles.next();
-                    if (bundle.containsKey(PROP_LANGUAGE) && this.pathFilter.includePath(bundle.get(PROP_PATH).toString())) {
-                        final Locale locale = toLocale(bundle.get(PROP_LANGUAGE).toString());
-                        String baseName = null;
-                        if (bundle.containsKey(PROP_BASENAME)) {
-                            baseName = bundle.get(PROP_BASENAME).toString();
-                        }
-                        final Key key = new Key(baseName, locale);
-                        if (usedKeys.add(key)) {
-                            getResourceBundleInternal(resolver, baseName, locale);
+                    if (bundle.containsKey(PROP_LANGUAGE) && bundle.containsKey(PROP_PATH)) {
+                        final String path = bundle.get(PROP_PATH).toString();
+                        final String language = bundle.get(PROP_LANGUAGE).toString();
+                        if (this.pathFilter.includePath(path)) {
+                            final Locale locale = toLocale(language);
+                            final String baseName = bundle.containsKey(PROP_BASENAME) ? bundle.get(PROP_BASENAME).toString() : null;
+                            final Key key = new Key(baseName, locale);
+                            if (usedKeys.add(key)) {
+                                getResourceBundleInternal(resolver, baseName, locale);
+                            }
+                        } else {
+                            log.warn("Ignoring i18n bundle for language {} at {} because it is not included by the path filter", language, path);
                         }
                     }
                 }

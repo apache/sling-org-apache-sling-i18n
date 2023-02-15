@@ -335,8 +335,12 @@ public class JcrResourceBundle extends ResourceBundle {
         final Iterator<Resource> bundles = resourceResolver.findResources(QUERY_LANGUAGE_ROOTS, "xpath");
         while (bundles.hasNext()) {
             final Resource bundle = bundles.next();
-            if (filter.includePath(bundle.getPath()) && check.isResourceBundle(bundle)) {
-                paths.add(bundle.getPath());
+            if (check.isResourceBundle(bundle)) {
+                if (filter.includePath(bundle.getPath())) {
+                    paths.add(bundle.getPath());
+                } else {
+                    log.warn("Ignoring i18n bundle for language {} at {} because it is not included by the path filter", locale, bundle.getPath());
+                }
             }
         }
 
@@ -349,6 +353,8 @@ public class JcrResourceBundle extends ResourceBundle {
                     if (parentResource != null) {
                         visitor.accept(parentResource, locator.getTraverseDepth());
                     }    
+                } else {
+                    log.warn("Ignoring i18n bundle for language {} at {} because it is not included by the path filter", locale, locator.getPath());
                 }
             }
         }
