@@ -106,7 +106,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
 
             @Override
             public String[] included_paths() {
-                return new String[] {"/libs", "/apps"};
+                return new String[] {"/libs", "/apps", "/content"};
             }
 
             @Override

@@ -36,11 +36,12 @@ public class PathFilterTest {
 
     @Test
     public void testIncludesAndExclusions() {
-        final PathFilter filter = new PathFilter(new String[] {"/libs", "/apps"}, new String[] {"/libs/foo"});
+        final PathFilter filter = new PathFilter(new String[] {"/libs", "/apps", "/content"}, new String[] {"/libs/foo"});
 
         assertFalse(filter.includePath("/another/path"));
         assertFalse(filter.includePath("/libs/foo/i18n"));
         assertTrue(filter.includePath("/libs/app/me"));
         assertTrue(filter.includePath("/apps/app/me"));
+        assertTrue(filter.includePath("/content/dam/abc"));
     }
 }

@@ -43,7 +43,7 @@ public @interface Config {
     
     @AttributeDefinition(name="Included paths",
             description="Translations in paths starting with one of these values will be included, unless they match one of the excluded paths.")
-    String[] included_paths() default {"/libs", "/apps"};
+    String[] included_paths() default {"/libs", "/apps", "/content"};
 
     @AttributeDefinition(name="Excluded paths",
             description="Translations in paths starting with one of these values will be excluded.")
