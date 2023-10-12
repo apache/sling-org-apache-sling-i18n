@@ -43,7 +43,7 @@
     <scm>
         <connection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</connection>
         <developerConnection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</developerConnection>
-        <url>https://gitbox.apache.org/repos/asf?p=sling-org-apache-sling-i18n.git</url>
+        <url>https://github.com/apache/sling-org-apache-sling-i18n.git</url>
         <tag>HEAD</tag>
     </scm>
 
