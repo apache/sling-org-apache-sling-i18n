@@ -18,338 +18,90 @@
  */
 package org.apache.sling.i18n.impl;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.net.URL;
+import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 import javax.jcr.Binary;
 import javax.jcr.Node;
-import javax.jcr.NodeIterator;
-import javax.jcr.Property;
 import javax.jcr.RepositoryException;
-import javax.jcr.Value;
-import javax.jcr.query.Query;
-import javax.jcr.query.QueryResult;
-import javax.jcr.query.RowIterator;
-import javax.naming.NamingException;
-import javax.servlet.http.HttpServletRequest;
+import javax.jcr.Session;
+import javax.jcr.util.TraversingItemVisitor;
 
-import org.apache.jackrabbit.JcrConstants;
-import org.apache.sling.api.resource.AbstractResource;
-import org.apache.sling.api.resource.PersistenceException;
-import org.apache.sling.api.resource.Resource;
-import org.apache.sling.api.resource.ResourceMetadata;
 import org.apache.sling.api.resource.ResourceResolver;
-import org.apache.sling.api.resource.ValueMap;
-import org.apache.sling.api.wrappers.ValueMapDecorator;
-import org.apache.sling.commons.testing.jcr.RepositoryTestBase;
-import org.apache.sling.commons.testing.jcr.RepositoryUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.sling.testing.mock.jcr.MockJcr;
+import org.apache.sling.testing.mock.jcr.MockQueryResult;
+import org.apache.sling.testing.mock.sling.ResourceResolverType;
+import org.apache.sling.testing.mock.sling.junit.SlingContext;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
 
 /**
  * Tests the {@link JcrResourceBundle} class.
  */
-public class JcrResourceBundleTest extends RepositoryTestBase {
+public class JcrResourceBundleTest {
 
-    private static final Logger log = LoggerFactory.getLogger(JcrResourceBundleTest.class);
+    @Rule
+    public final SlingContext context = new SlingContext(ResourceResolverType.JCR_MOCK);
 
     protected ResourceResolver resolver;
 
-    @Override
-    public void setUp() throws Exception {
-        super.setUp();
-
-        cleanRepository();
-
-        RepositoryUtil.registerNodeType(getSession(), getClass()
-                .getResourceAsStream("/SLING-INF/nodetypes/jcrlanguage.cnd"));
-        RepositoryUtil.registerNodeType(getSession(), getClass()
-                .getResourceAsStream("/SLING-INF/nodetypes/message.cnd"));
-
-        resolver = new ResourceResolver() {
-
-            @Override
-            public Iterator<Resource> findResources(String query,
-                    String language) {
-                try {
-                    final Query q = getSession().getWorkspace().getQueryManager().createQuery(query, language);
-                    final QueryResult result = q.execute();
-                    final NodeIterator nodes = result.getNodes();
-                    return new Iterator<Resource>() {
-                        @Override
-                        public boolean hasNext() {
-                            return nodes.hasNext();
-                        }
-
-                        @Override
-                        public Resource next() {
-                            final Node node = nodes.nextNode();
-                            return new TestResource(resolver, node);
-                        }
-
-                        @Override
-                        public void remove() {
-                            throw new UnsupportedOperationException("remove");
-                        }
-                    };
-                } catch (NamingException ne) {
-                    return null;
-                } catch (RepositoryException re) {
-                    return null;
-                }
-            }
-
-            @Override
-            public Resource getResource(Resource base, String path) {
-                return null;
-            }
-
-            @Override
-            public Resource getResource(String path) {
-                try {
-                    final Node n = getSession().getNode(path);
-                    return new TestResource(resolver, n);
-
-                } catch (NamingException ne) {
-                     //ignore
-                } catch (RepositoryException re) {
-                    //ignore
-                }
-                return null;
-            }
-
-            @Override
-            public String[] getSearchPath() {
-                return new String[] {"/apps/", "/libs/"};
-            }
-
-            @Override
-            public Iterator<Resource> listChildren(final Resource parent) {
-                try {
-                    final Node n = getSession().getNode(parent.getPath());
-                    final NodeIterator nodes = n.getNodes();
-                    return new Iterator<Resource>() {
-                        @Override
-                        public boolean hasNext() {
-                            return nodes.hasNext();
-                        }
-
-                        @Override
-                        public Resource next() {
-                            final Node node = nodes.nextNode();
-                            return new TestResource(resolver, node);
-                        }
-
-                        @Override
-                        public void remove() {
-                            throw new UnsupportedOperationException("remove");
-                        }
-                    };
-                } catch ( final RepositoryException re) {
-                    // ignore
-                    return null;
-                } catch ( final NamingException e) {
-                    // ignore
-                    return null;
-                }
-            }
-
-            @Override
-            public String map(HttpServletRequest request, String resourcePath) {
-                return null;
-            }
-
-            @Override
-            public String map(String resourcePath) {
-                return null;
-            }
-
-            @Override
-            public Iterator<Map<String, Object>> queryResources(String query,
-                    String language) {
-                try {
-                    final Query q = getSession().getWorkspace().getQueryManager().createQuery(query, language);
-                    final QueryResult result = q.execute();
-                    final String[] colNames = result.getColumnNames();
-                    final RowIterator rows = result.getRows();
-                    return new Iterator<Map<String, Object>>() {
-                        @Override
-                        public boolean hasNext() {
-                            return rows.hasNext();
-                        }
-
-                        @Override
-                        public Map<String, Object> next() {
-                            Map<String, Object> row = new HashMap<String, Object>();
-                            try {
-                                Value[] values = rows.nextRow().getValues();
-                                for (int i = 0; i < values.length; i++) {
-                                    Value v = values[i];
-                                    if (v != null) {
-                                        row.put(colNames[i], values[i].getString());
-                                    }
-                                }
-                            } catch (RepositoryException re) {
-                                // ignore
-                            }
-                            return row;
-                        }
-
-                        @Override
-                        public void remove() {
-                            throw new UnsupportedOperationException("remove");
-                        }
-                    };
-                } catch (NamingException ne) {
-                    return null;
-                } catch (RepositoryException re) {
-                    return null;
-                }
-            }
-
-            @Override
-            public Resource resolve(HttpServletRequest request, String absPath) {
-                return null;
-            }
-
-            @Override
-            public Resource resolve(HttpServletRequest request) {
-                return null;
-            }
-
-            @Override
-            public Resource resolve(String absPath) {
-                return null;
-            }
-
-            @Override
-            public <AdapterType> AdapterType adaptTo(Class<AdapterType> type) {
-                return null;
-            }
-
-            @Override
-            public void close() {
-                // nothing to do
-            }
-
-            @Override
-            public String getUserID() {
-                return null;
-            }
-
-            @Override
-            public boolean isLive() {
-                return true;
-            }
-
-            @Override
-            public ResourceResolver clone(Map<String, Object> authenticationInfo) {
-                return null;
-            }
-
-            @Override
-            public Iterator<String> getAttributeNames() {
-                return null;
-            }
-
-            @Override
-            public Object getAttribute(String name) {
-                return null;
-            }
-
-            @Override
-            public Iterable<Resource> getChildren(Resource parent) {
-                return null;
-            }
-
-            @Override
-            public void delete(Resource resource) throws PersistenceException {
-            }
-
-            @Override
-            public Resource create(Resource parent, String name,
-                    Map<String, Object> properties) throws PersistenceException {
-                return null;
-            }
-
-            @Override
-            public void revert() {
-            }
-
-            @Override
-            public void commit() throws PersistenceException {
-            }
-
-            @Override
-            public boolean hasChanges() {
-                return false;
-            }
-
-            @Override
-            public String getParentResourceType(Resource resource) {
-                return null;
-            }
-
-            @Override
-            public String getParentResourceType(String resourceType) {
-                return null;
-            }
-
-            @Override
-            public boolean isResourceType(final Resource resource, final String resourceType) {
-                return resourceType.equals(resource.getResourceType());
-            }
-
-            @Override
-            public void refresh() {
-
-            }
-
-            @Override
-            public Resource getParent(Resource child) {
-                return null;
-            }
-
-            @Override
-            public boolean hasChildren(Resource resource) {
-                return false;
-            }
-
-            @Override
-            public Resource copy(String srcAbsPath, String destAbsPath) throws PersistenceException {
-                return null;
-            }
-
-            @Override
-            public Resource move(String srcAbsPath, String destAbsPath) throws PersistenceException {
-                return null;
-            }
-        };
-
-        createTestContent();
+    private Session getSession() {
+        return context.resourceResolver().adaptTo(Session.class);
     }
 
-    public void cleanRepository() throws Exception {
-        NodeIterator nodes = getSession().getRootNode().getNodes();
-        while (nodes.hasNext()) {
-            Node node = nodes.nextNode();
-            if (!node.getDefinition().isProtected() && !node.getDefinition().isMandatory()) {
-                try {
-                    node.remove();
-                } catch (RepositoryException e) {
-                    log.error("Test clean repo: Cannot remove node: " + node.getPath(), e);
-                }
+    @Before
+    public void setUp() throws Exception {
+        Session session = getSession();
+        String[] cndResourcesToLoad = new String[] {
+                "/org/apache/jackrabbit/oak/builtin_nodetypes.cnd",
+                "/SLING-INF/nodetypes/jcrlanguage.cnd",
+                "/SLING-INF/nodetypes/message.cnd"
+        };
+        for (String resourceName : cndResourcesToLoad) {
+            URL cndUrl = getClass().getResource(resourceName);
+            if (cndUrl == null) {
+                fail("Failed to load CND nodetypes resource: " + resourceName);
+            }
+            try (Reader reader = new InputStreamReader(cndUrl.openStream())) {
+                MockJcr.loadNodeTypeDefs(session, reader);
             }
         }
-        getSession().save();
-    }
 
+        resolver = context.resourceResolver();
+
+        createTestContent();
+
+        MockJcr.addQueryResultHandler(session, query -> {
+            List<Node> languageNodes = new ArrayList<>();
+            try {
+                session.getRootNode().accept(new TraversingItemVisitor.Default() {
+                    @Override
+                    protected void entering(Node node, int level) throws RepositoryException {
+                        if (node.isNodeType("mix:language")) {
+                            languageNodes.add(node);
+                        }
+                    }
+                });
+            } catch (RepositoryException e) {
+                fail("Failed to visit language nodes. Reason: " + e.getMessage());
+            }
+            return new MockQueryResult(languageNodes);
+        });
+    }
 
     // test data to add to the repository (use linked hash map for insertion order)
     public static final Map<String, Message> MESSAGES_DE = new LinkedHashMap<String, Message>();
@@ -446,6 +198,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
 
     // ---------------------------------------------------------------< tests >
 
+    @Test
     public void test_getString() {
         JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE.values()) {
@@ -468,6 +221,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         }
     }
 
+    @Test
     public void test_getObject() {
         JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE.values()) {
@@ -475,6 +229,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         }
     }
 
+    @Test
     public void test_handle_missing_key() {
         // test if key is returned if no entry found in repo
         JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
@@ -482,6 +237,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         assertEquals("missing", bundle.getString("missing"));
     }
 
+    @Test
     public void test_getKeys() {
         JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
         Enumeration<String> keys = bundle.getKeys();
@@ -494,6 +250,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         assertEquals(MESSAGES_DE.size(), counter);
     }
 
+    @Test
     public void test_bundle_parenting() {
         // set parent of resource bundle, test if passed through
         JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
@@ -505,6 +262,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         assertEquals("missing", bundle.getString("missing"));
     }
 
+    @Test
     public void test_search_path() throws Exception {
         // overwrite stuff in apps
         Node appsI18n = getSession().getRootNode().addNode("apps").addNode("i18n", "nt:unstructured");
@@ -533,6 +291,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         assertEquals(MESSAGES_DE.size(), counter);
     }
 
+    @Test
     public void test_outside_search_path() throws Exception {
         Node libsI18n = getSession().getRootNode().getNode("libs/i18n");
         libsI18n.remove();
@@ -580,6 +339,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         assertEquals(MESSAGES_DE.size(), counter);
     }
 
+    @Test
     public void test_basename() throws Exception {
         // create another de lib with a basename set
         Node appsI18n = getSession().getRootNode().getNode("libs/i18n");
@@ -615,6 +375,7 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         assertEquals(MESSAGES_DE.size(), counter);
     }
 
+    @Test
     public void test_json_dictionary() throws Exception {
         Node appsI18n = getSession().getRootNode().addNode("apps").addNode("i18n", "nt:unstructured");
         Node deJson = appsI18n.addNode("de.json", "nt:file");
@@ -654,106 +415,4 @@ public class JcrResourceBundleTest extends RepositoryTestBase {
         assertEquals(MESSAGES_DE.size(), counter);
     }
 
-    private class TestResource extends AbstractResource {
-
-        private final Node node;
-
-        private final ResourceResolver resolver;
-
-        public TestResource(final ResourceResolver resolver, final Node xnode) {
-            this.node = xnode;
-            this.resolver = resolver;
-        }
-
-        @Override
-        public String getResourceType() {
-            try {
-                return this.node.getPrimaryNodeType().getName();
-            } catch ( final RepositoryException re) {
-                return "<unknown>";
-            }
-        }
-
-        @Override
-        public String getResourceSuperType() {
-            return null;
-        }
-
-        @Override
-        public ResourceResolver getResourceResolver() {
-            return this.resolver;
-        }
-
-        @Override
-        public ResourceMetadata getResourceMetadata() {
-            return new ResourceMetadata();
-        }
-
-        @Override
-        public String getPath() {
-            try {
-                return node.getPath();
-            } catch ( final RepositoryException re ) {
-                throw new RuntimeException(re);
-            }
-        }
-
-        @Override
-        public <AdapterType> AdapterType adaptTo(
-                Class<AdapterType> type) {
-            if ( type == ValueMap.class) {
-                try {
-                    final Map<String, Object> props = new HashMap<String, Object>();
-                    if ( node.hasProperty(JcrResourceBundle.PROP_LANGUAGE) ) {
-                        props.put(JcrResourceBundle.PROP_LANGUAGE, node.getProperty(JcrResourceBundle.PROP_LANGUAGE).getString());
-                    }
-                    if ( node.hasProperty(JcrResourceBundle.PROP_BASENAME) ) {
-                        Property propBasename = node.getProperty(JcrResourceBundle.PROP_BASENAME);
-                        if (propBasename.isMultiple()) {
-                            String[] basenames = new String[propBasename.getValues().length];
-                            int i=0;
-                            for (Value basename : propBasename.getValues()) {
-                                basenames[i++] = basename.getString();
-                            }
-                            props.put(JcrResourceBundle.PROP_BASENAME, basenames);
-                        } else {
-                            props.put(JcrResourceBundle.PROP_BASENAME, propBasename.getString());
-                        }
-                    }
-                    if ( node.hasProperty(JcrResourceBundle.PROP_KEY) ) {
-                        props.put(JcrResourceBundle.PROP_KEY, node.getProperty(JcrResourceBundle.PROP_KEY).getString());
-                    }
-                    if ( node.hasProperty(JcrResourceBundle.PROP_VALUE) ) {
-                        props.put(JcrResourceBundle.PROP_VALUE, node.getProperty(JcrResourceBundle.PROP_VALUE).getString());
-                    }
-                    if ( node.hasProperty(JcrResourceBundle.PROP_MIXINS) ) {
-                        final Value[] values = node.getProperty(JcrResourceBundle.PROP_MIXINS).getValues();
-                        final String[] names = new String[values.length];
-                        for(int i=0;i<values.length;i++) {
-                            names[i] = values[i].getString();
-                        }
-                        props.put(JcrResourceBundle.PROP_MIXINS, names);
-                    }
-                    return (AdapterType)new ValueMapDecorator(props);
-                } catch ( final RepositoryException re ) {
-                    throw new RuntimeException(re);
-                }
-            }
-            if (type == InputStream.class) {
-                try {
-                    if (node.hasNode(JcrConstants.JCR_CONTENT)) {
-                        return (AdapterType) node.getNode(JcrConstants.JCR_CONTENT).getProperty(JcrConstants.JCR_DATA).getBinary().getStream();
-                    } else {
-                        return null;
-                    }
-                } catch (RepositoryException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-            if (type == Node.class) {
-                return (AdapterType)node;
-            }
-            return super.adaptTo(type);
-        }
-    };
 }

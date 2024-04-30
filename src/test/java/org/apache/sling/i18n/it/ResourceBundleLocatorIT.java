@@ -18,6 +18,7 @@
  */
 package org.apache.sling.i18n.it;
 
+import static org.apache.sling.testing.paxexam.SlingOptions.slingBundleresource;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.ops4j.pax.exam.CoreOptions.composite;
@@ -134,7 +135,8 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
             }
         }
         
-        return composite(composite(super.configuration()), 
+        return composite(composite(super.configuration()),
+                        slingBundleresource(),
                          composite(bundle))
                 .getOptions();
     }
