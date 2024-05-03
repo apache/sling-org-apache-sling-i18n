@@ -19,61 +19,53 @@
 package org.apache.sling.i18n.impl;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.fail;
-import static org.mockito.AdditionalMatchers.or;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.times;
-import static org.powermock.api.mockito.PowerMockito.doAnswer;
-import static org.powermock.api.mockito.PowerMockito.doReturn;
-import static org.powermock.api.mockito.PowerMockito.mock;
-import static org.powermock.api.mockito.PowerMockito.spy;
-import static org.powermock.api.mockito.PowerMockito.verifyPrivate;
 
-import java.lang.annotation.Annotation;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.commons.scheduler.ScheduleOptions;
+import org.apache.sling.commons.scheduler.Scheduler;
 import org.apache.sling.i18n.impl.JcrResourceBundleProvider.Key;
+import org.apache.sling.serviceusermapping.ServiceUserMapped;
+import org.apache.sling.testing.mock.sling.junit.SlingContext;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.verification.VerificationMode;
-import org.osgi.framework.BundleContext;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 
 /**
  * Test case to verify that each bundle is only loaded once, even
  * if concurrent requests for the same bundle are made.
  */
-@RunWith(PowerMockRunner.class)
-@PowerMockRunnerDelegate(Parameterized.class)
-@PrepareForTest(JcrResourceBundleProvider.class)
+@RunWith(Parameterized.class)
 public class ConcurrentJcrResourceBundleLoadingTest {
+
+    @Rule
+    public final SlingContext context = new SlingContext();
 
     @Parameterized.Parameters(name = "preload_bundles={0}")
     public static Iterable<? extends Object> PRELOAD_BUNDLES() {
         return Arrays.asList(Boolean.TRUE, Boolean.FALSE);
     }
-
-    @Mock JcrResourceBundle english;
-    @Mock JcrResourceBundle german;
 
     @Parameterized.Parameter public Boolean preload = Boolean.FALSE;
 
@@ -81,59 +73,44 @@ public class ConcurrentJcrResourceBundleLoadingTest {
 
     @Before
     public void setup() throws Exception {
-        provider = spy(new JcrResourceBundleProvider());
-        provider.activate(PowerMockito.mock(BundleContext.class), new Config() {
+        // mock other required services
+        Scheduler mockScheduler = context.registerService(Scheduler.class, Mockito.mock(Scheduler.class));
+        // mock this call to avoid a NPE during activation
+        Mockito.doAnswer(invocation -> {
+            return Mockito.mock(ScheduleOptions.class);
+        }).when(mockScheduler).NOW();
+        // Mock the schedule call so we do not wait for the "ResourceBundleProvider: reload all resource bundles"
+        //   scheduled job to be completed during activation.  That background schedule execution can interfere with
+        //   the multi-threaded tests (i.e. the cache gets reset in the middle of doing something)
+        Mockito.doAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(0, Runnable.class);
+            runnable.run();
+            return null;
+        }).when(mockScheduler).schedule(any(Runnable.class), any(ScheduleOptions.class));
+        context.registerService(ServiceUserMapped.class, Mockito.mock(ServiceUserMapped.class));
 
-            @Override
-            public Class<? extends Annotation> annotationType() {
-                return Config.class;
-            }
-
-            @Override
-            public boolean preload_bundles() {
-                return preload;
-            }
-
-            @Override
-            public String locale_default() {
-                return "en";
-            }
-
-            @Override
-            public long invalidation_delay() {
-                return 5000;
-            }
-
-            @Override
-            public String[] included_paths() {
-                return new String[] {"/libs", "/apps"};
-            }
-
-            @Override
-            public String[] excluded_paths() {
-                return new String[] {"/var/eventing"};
-            }
-        });
-        doReturn(null).when(provider, "createResourceResolver");
-        doReturn(english).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
-        doReturn(german).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
-        Mockito.when(german.getLocale()).thenReturn(Locale.GERMAN);
-        Mockito.when(english.getLocale()).thenReturn(Locale.ENGLISH);
-        Mockito.when(german.getParent()).thenReturn(english);
+        Map<String, Object> configMap = new HashMap<>();
+        configMap.put("preload.bundles", preload);
+        configMap.put("locale.default", "en");
+        configMap.put("invalidation.delay", 5000);
+        configMap.put("included.paths", new String[] {"/libs", "/apps"});
+        configMap.put("excluded.paths", new String[] {"/var/eventing"});
+        provider = context.registerInjectActivateService(JcrResourceBundleProvider.class, configMap);
     }
 
     @Test
     public void loadBundlesOnlyOncePerLocale() throws Exception {
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        ResourceBundle german = provider.getResourceBundle(Locale.GERMAN);
         assertEquals(english, provider.getResourceBundle(Locale.ENGLISH));
         assertEquals(english, provider.getResourceBundle(Locale.ENGLISH));
         assertEquals(german, provider.getResourceBundle(Locale.GERMAN));
         assertEquals(german, provider.getResourceBundle(Locale.GERMAN));
-
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), any(Locale.class));
     }
 
     @Test
     public void loadBundlesOnlyOnceWithConcurrentRequests() throws Exception {
+        Map<Locale, List<ResourceBundle>> rbMap = new ConcurrentHashMap<>();
         final int numberOfThreads = 40;
         final ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads / 2);
         for (int i = 0; i < numberOfThreads; i++) {
@@ -141,51 +118,54 @@ public class ConcurrentJcrResourceBundleLoadingTest {
             executor.submit(new Runnable() {
                 @Override
                 public void run() {
-                    provider.getResourceBundle(language);
+                    ResourceBundle rb = provider.getResourceBundle(language);
+                    List<ResourceBundle> list = rbMap.computeIfAbsent(language, key -> new ArrayList<>());
+                    list.add(rb);
                 }
             });
         }
         executor.shutdown();
         executor.awaitTermination(5, TimeUnit.SECONDS);
 
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
+        // convert to set to remove the duplicates
+        Set<ResourceBundle> englishSet = new HashSet<>(rbMap.get(Locale.ENGLISH));
+        // should only be one uqique value
+        assertEquals(1, englishSet.size());
+        Set<ResourceBundle> germanSet = new HashSet<>(rbMap.get(Locale.GERMAN));
+        assertEquals(1, germanSet.size());
     }
 
     @Test
     public void newBundleUsedAfterReload() throws Exception {
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        ResourceBundle german = provider.getResourceBundle(Locale.GERMAN);
 
         // reloading german should not reload any other bundle
         provider.reloadBundle(new Key(null, Locale.GERMAN));
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
-
-        verifyPrivate(provider, times(1)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
+        assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
+        ResourceBundle german2 = provider.getResourceBundle(Locale.GERMAN);
+        assertNotSame(german2, german);
+        assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
+        assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
+        assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
+        assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
     }
 
     @Test
     public void newBundleUsedAsParentAfterReload() throws Exception {
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        ResourceBundle german = provider.getResourceBundle(Locale.GERMAN);
 
         // reloading english should also reload german (because it has english as a parent)
         provider.reloadBundle(new Key(null, Locale.ENGLISH));
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
-        provider.getResourceBundle(Locale.ENGLISH);
-        provider.getResourceBundle(Locale.GERMAN);
-
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
-        verifyPrivate(provider, times(2)).invoke("createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.GERMAN));
+        ResourceBundle english2 = provider.getResourceBundle(Locale.ENGLISH);
+        assertNotSame(english2, english);
+        ResourceBundle german2 = provider.getResourceBundle(Locale.GERMAN);
+        assertNotSame(german2, german);
+        assertSame(english2, provider.getResourceBundle(Locale.ENGLISH));
+        assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
+        assertSame(english2, provider.getResourceBundle(Locale.ENGLISH));
+        assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
     }
 
     /**
@@ -196,20 +176,14 @@ public class ConcurrentJcrResourceBundleLoadingTest {
      */
     @Test
     public void newBundleReplacesOldBundleAfterReload() throws Exception {
-        provider.getResourceBundle(Locale.ENGLISH);
-        final ResourceBundle newBundle = mock(JcrResourceBundle.class);
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
         final CountDownLatch newBundleReturned = new CountDownLatch(1);
-
-        doAnswer(invocationOnMock -> {
-            Thread.sleep(1000);
-            return newBundle;
-        }).when(provider, "createResourceBundle", or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH));
 
         ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
         executorService.scheduleAtFixedRate(
             () -> {
                 ResourceBundle currentBundle = provider.getResourceBundle(Locale.ENGLISH);
-                if (currentBundle == newBundle) {
+                if (currentBundle != english) {
                     // Shutdown the executor once we got the new ResourceBundle. This will cancel the future and opens the gate below.
                     // Do not assert the returned bundle directly here, as this may become flaky when the bundle returned by the
                     // mock above was returned but not yet put into the cache.
@@ -231,16 +205,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         }
         // CancellationException expected
 
-        // we expect getResourceBundleInternal() called once in the beginning of the test and once again after reloading the bundle.
-        final int expectedGetResourceBundleInternal = 2;
-        VerificationMode verificationMode = preload
-            // when preloading the calls to getResourceBundleInternal are non-blocking and so more calls will happen while reloading.
-            // assuming at least one more
-            ? atLeast(expectedGetResourceBundleInternal + 1)
-            : times(expectedGetResourceBundleInternal);
-
-        verifyPrivate(provider, verificationMode).invoke("getResourceBundleInternal",
-            or(ArgumentMatchers.isNull(), any(ResourceResolver.class)), eq(null), eq(Locale.ENGLISH), anyBoolean());
-
+        ResourceBundle english2 = provider.getResourceBundle(Locale.ENGLISH);
+        assertNotSame(english2, english);
     }
 }
