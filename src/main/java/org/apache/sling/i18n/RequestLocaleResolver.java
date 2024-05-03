@@ -21,8 +21,6 @@ package org.apache.sling.i18n;
 import java.util.List;
 import java.util.Locale;
 
-import javax.servlet.http.HttpServletRequest;
-
 /**
  * The <code>RequestLocaleResolver</code> service interface may be implemented by a
  * service registered under this name to allow the resolution of the request
@@ -51,6 +49,26 @@ public interface RequestLocaleResolver {
      * @return The list of <code>Locale</code>s to use for internationalization
      *         of request processing
      */
-    List<Locale> resolveLocale(HttpServletRequest request);
+    List<Locale> resolveLocale(javax.servlet.http.HttpServletRequest request);
+
+    /**
+     * Return a non-<code>null</code> but possibly empty list of
+     * <code>Locale</code> instances to consider for localization of the current
+     * request. The list returned is assumed to be ordered by preference where
+     * the first entry is the preferred <code>Locale</code> and the last entry is
+     * the least preferred <code>Locale</code>.
+     * <p>
+     * Returning an empty list is equivalent to returning a singleton list whose
+     * single entry is the {@link ResourceBundleProvider#getDefaultLocale()}.
+     *
+     * @param request The <code>HttpServletRequest</code> providing hints
+     *            and information for the <code>Locale</code> resolution.
+     * @return The list of <code>Locale</code>s to use for internationalization
+     *         of request processing
+     * @since 2.3
+     */
+    default List<Locale> resolveLocale(jakarta.servlet.http.HttpServletRequest request) {
+        throw new UnsupportedOperationException();
+    }
 
 }
