@@ -208,4 +208,13 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         ResourceBundle english2 = provider.getResourceBundle(Locale.ENGLISH);
         assertNotSame(english2, english);
     }
+
+    /**
+     * Verify that no exception occurs if requests come in during deactivate
+     */
+    @Test
+    public void loadBundlesDuringDeactivateRace() {
+        provider.deactivate();
+        provider.getResourceBundle(Locale.ENGLISH);
+    }
 }

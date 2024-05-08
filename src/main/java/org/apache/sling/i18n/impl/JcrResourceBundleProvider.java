@@ -220,6 +220,9 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     @Override
     public void onChange(final List<ResourceChange> changes) {
+        if (this.bundleContext == null) {
+            return;
+        }
         final ChangeStatus status = new ChangeStatus();
         try {
             for (final ResourceChange change : changes) {
@@ -399,7 +402,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()));
         }
 
-        if (this.preloadBundles) {
+        if (this.preloadBundles && this.bundleContext != null) {
             // reload the bundle from the repository (will also fill cache and register as a service)
             getResourceBundleInternal(null, key.baseName, key.locale, true);
         }
@@ -436,8 +439,10 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             this.locatorPathsTracker = null;
         }
 
-        clearCache();
-        this.bundleContext = null;
+        synchronized(this) {
+            this.bundleContext = null;
+            clearCache();
+        }
     }
 
     // ---------- internal -----------------------------------------------------
@@ -529,9 +534,13 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             serviceProps.put("baseName", key.baseName);
         }
         serviceProps.put("locale", key.locale.toString());
-        ServiceRegistration<ResourceBundle> serviceReg = bundleContext.registerService(ResourceBundle.class,
-                resourceBundle, serviceProps);
         synchronized (this) {
+            if (this.bundleContext == null) {
+                return;
+            }
+            ServiceRegistration<ResourceBundle> serviceReg = bundleContext.registerService(ResourceBundle.class,
+            resourceBundle, serviceProps);
+
             bundleServiceRegistrations.put(key, serviceReg);
         }
 
@@ -624,7 +633,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     }
 
     private void preloadBundles() {
-        if (this.preloadBundles) {
+        if (this.preloadBundles && this.bundleContext != null) {
             try ( final ResourceResolver resolver = createResourceResolver() ) {
                 final Iterator<Map<String, Object>> bundles = resolver.queryResources(
                     JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
