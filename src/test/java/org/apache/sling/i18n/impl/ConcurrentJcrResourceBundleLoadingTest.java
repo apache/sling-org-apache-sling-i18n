@@ -19,6 +19,7 @@
 package org.apache.sling.i18n.impl;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.fail;
@@ -207,5 +208,14 @@ public class ConcurrentJcrResourceBundleLoadingTest {
 
         ResourceBundle english2 = provider.getResourceBundle(Locale.ENGLISH);
         assertNotSame(english2, english);
+    }
+
+    /**
+     * Verify that no exception occurs if requests come in during deactivate
+     */
+    @Test
+    public void loadBundlesDuringDeactivateRace() {
+        provider.deactivate();
+        assertNotNull(provider.getResourceBundle(Locale.ENGLISH));
     }
 }
