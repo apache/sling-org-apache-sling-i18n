@@ -18,12 +18,13 @@
  */
 package org.apache.sling.i18n.impl;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.fail;
+import static java.lang.Thread.sleep;
+import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -33,13 +34,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.observation.ResourceChange;
 import org.apache.sling.commons.scheduler.ScheduleOptions;
 import org.apache.sling.commons.scheduler.Scheduler;
 import org.apache.sling.i18n.impl.JcrResourceBundleProvider.Key;
@@ -207,5 +205,58 @@ public class ConcurrentJcrResourceBundleLoadingTest {
 
         ResourceBundle english2 = provider.getResourceBundle(Locale.ENGLISH);
         assertNotSame(english2, english);
+    }
+
+    /**
+     * Verify that no exception occurs if requests come in during deactivate
+     */
+    @Test
+    public void loadBundlesDuringDeactivateRace() {
+        provider.deactivate();
+        assertNotNull(provider.getResourceBundle(Locale.ENGLISH));
+    }
+
+    /**
+     * Verify that the registry is cleared completely and all services are deregistered
+     * so no service is leftover even if registering and clearing occur in an interleaved manner.
+     */
+    @Test
+    public void clearCacheInterleavedWithRegistersClearsAllRBs() throws Exception {
+        Map<Locale, List<ResourceBundle>> rbLists = new ConcurrentHashMap<>();
+        final Locale[] testLocales = {Locale.ENGLISH, Locale.FRENCH, Locale.GERMAN, Locale.ITALIAN, Locale.JAPANESE, Locale.KOREAN, Locale.CHINESE, Locale.SIMPLIFIED_CHINESE, Locale.TRADITIONAL_CHINESE};
+
+        final int numberOfThreads = 100;
+        // Use a barrier to start the execution of all the threads simultaneously once they are all ready
+        final CyclicBarrier barrier = new CyclicBarrier(numberOfThreads);
+        final ExecutorService pool = Executors.newFixedThreadPool(numberOfThreads);
+        for (int i = 0; i < numberOfThreads; i++) {
+            pool.submit(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        barrier.await();
+                        for (Locale locale : testLocales) {
+                            ResourceBundle rb = provider.getResourceBundle(locale);
+                            List<ResourceBundle> rbList = rbLists.computeIfAbsent(locale, key -> new ArrayList<>());
+                            rbList.add(rb);
+                        }
+                        // trigger registry clearing and service deregistration
+                        provider.clearCache();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            });
+        }
+        pool.shutdown();
+        pool.awaitTermination(5, TimeUnit.SECONDS);
+
+        // getResourceBundle should return a new ResourceBundle instance,
+        // not one that might be left in the cache by an incomplete clearing
+        for (Locale locale : testLocales) {
+            ResourceBundle rb = provider.getResourceBundle(locale);
+            List<ResourceBundle> rbList = rbLists.get(locale);
+            assertFalse(rbList.contains(rb));
+        }
     }
 }
