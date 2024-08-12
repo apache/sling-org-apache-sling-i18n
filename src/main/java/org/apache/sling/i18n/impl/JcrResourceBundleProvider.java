@@ -566,14 +566,19 @@ public class JcrResourceBundleProvider
      * </ol>
      */
     private Locale getParentLocale(Locale locale) {
-        if (locale.getVariant().length() != 0) {
+        if (locale.getScript().length() != 0 && locale.getVariant().length() != 0) {
+            return new Locale.Builder().setLanguage(locale.getLanguage()).setRegion(locale.getCountry()).setScript(locale.getScript()).build();
+        } else if (locale.getScript().length() != 0 && locale.getCountry().length() != 0) {
+            return new Locale.Builder().setLanguage(locale.getLanguage()).setScript(locale.getScript()).build();
+        } else if (locale.getScript().length() !=0) {
+            return new Locale(locale.getLanguage());
+        } else if (locale.getVariant().length() != 0) {
             return new Locale(locale.getLanguage(), locale.getCountry());
         } else if (locale.getCountry().length() != 0) {
             return new Locale(locale.getLanguage());
         } else if (!locale.getLanguage().equals(defaultLocale.getLanguage())) {
             return defaultLocale;
         }
-
         // no more parents
         return null;
     }
@@ -680,10 +685,47 @@ public class JcrResourceBundleProvider
         if (parts.length == 1) {
             return new Locale(lang);
         }
-
-        // country is also available
-        String country = parts[1];
+    
+        // Initialize variables for script, country, and variant
+        String script = "";
+        String country = "";
+        String variant = "";
+    
+        boolean isValidScriptCode = false;
         boolean isValidCountryCode = false;
+    
+        if (parts.length == 2) {
+            if (parts[1].length() == 4) { // Assume it's a script code (4 letters)
+                script = parts[1];
+            } else {
+                country = parts[1];
+            }
+        } else if (parts.length == 3) {
+            if (parts[1].length() == 4) { // Script and country
+                script = parts[1];
+                country = parts[2];
+            } else { // Country and variant
+                country = parts[1];
+                variant = parts[2];
+            }
+        } else if (parts.length == 4) {
+            if (parts[1].length() == 4) { // Script and country
+                script = parts[1];
+                country = parts[2];
+                variant = parts[3];
+            } else {
+                country = parts[1];
+                variant = parts[2];
+            }
+        } else {
+            country = parts[1];
+            variant = parts[2];
+        }
+        
+        // validate script and country
+    
+        isValidScriptCode = isAlphaString(script);
+    
         // allow user-assigned codes (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#User-assigned_code_elements)
         if (USER_ASSIGNED_COUNTRY_CODES_PATTERN.matcher(country.toLowerCase()).matches()) {
             isValidCountryCode = true;
@@ -696,17 +738,41 @@ public class JcrResourceBundleProvider
                 }
             }
         }
-        if (!isValidCountryCode) {
+    
+        if (!isValidScriptCode) {
+            script = ""; // Reset to empty if invalid
+        }
+        
+        if (!isValidCountryCode && !country.isEmpty()) {
             country = Locale.getDefault().getCountry();
         }
-
-        // language and country
-        if (parts.length == 2) {
-            return new Locale(lang, country);
+    
+        // Return Locale based on available components
+        Locale.Builder builder = new Locale.Builder().setLanguage(lang);
+        if (!script.isEmpty()) {
+            builder.setScript(script);
         }
-
-        // language, country and variant
-        return new Locale(lang, country, parts[2]);
+        if (!country.isEmpty()) {
+            builder.setRegion(country);
+        }
+        if (!variant.isEmpty()) {
+            builder.setVariant(variant);
+        }
+        return builder.build();
+    }
+    
+    static boolean isAlpha(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    }
+    
+    static boolean isAlphaString(String s) {
+        int len = s.length();
+        for (int i = 0; i < len; i++) {
+            if (!isAlpha(s.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // ---------- internal class
