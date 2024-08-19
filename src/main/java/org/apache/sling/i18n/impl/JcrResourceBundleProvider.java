@@ -27,7 +27,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Dictionary;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -40,7 +39,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.Resource;
@@ -114,10 +116,9 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     private volatile Locale defaultLocale = Locale.ENGLISH;
 
     /**
-     * Map of cached resource bundles indexed by a key combined of the base name
-     * and <code>Locale</code> used to load and identify the <code>ResourceBundle</code>.
+     * Registry of the loaded <code>resource bundles</code> and the associated <code>service registrations</code>
      */
-    private final ConcurrentHashMap<Key, JcrResourceBundle> resourceBundleCache = new ConcurrentHashMap<>();
+    private ResourceBundleRegistry resourceBundleRegistry;
 
     private final ConcurrentHashMap<Key, Semaphore> loadingGuards = new ConcurrentHashMap<>();
 
@@ -131,13 +132,6 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
      * {@link #getRootResourceBundle()}.
      */
     private volatile ResourceBundle rootResourceBundle;
-
-    private volatile BundleContext bundleContext;
-
-    /**
-     * Each ResourceBundle is registered as a service. Each registration is stored in this map with the locale & base name used as a key.
-     */
-    private final Map<Key, ServiceRegistration<ResourceBundle>> bundleServiceRegistrations = new HashMap<>();
 
     private BundleTracker<Set<LocatorPaths>> locatorPathsTracker;
     private List<LocatorPaths> locatorPaths = new CopyOnWriteArrayList<>();
@@ -220,6 +214,9 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     @Override
     public void onChange(final List<ResourceChange> changes) {
+        if (resourceBundleRegistry.isClosed()) {
+            return;
+        }
         final ChangeStatus status = new ChangeStatus();
         try {
             for (final ResourceChange change : changes) {
@@ -264,7 +261,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             for (final String root : languageRootPaths) {
                 if (change.getPath().startsWith(root)) {
                     // figure out which JcrResourceBundles from the cached ones is affected
-                    for (JcrResourceBundle bundle : resourceBundleCache.values()) {
+                    for (JcrResourceBundle bundle : resourceBundleRegistry.getResourceBundles()) {
                         if (bundle.getLanguageRootPaths().contains(root)) {
                             // reload it
                             log.debug("onChange: Resource changes below '{}', reloading ResourceBundle '{}'",
@@ -377,15 +374,12 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
     void reloadBundle(final Key key) {
         log.info("Reloading resource bundle for {}", key);
         if (!this.preloadBundles) {
-            // remove bundle from cache
-            resourceBundleCache.remove(key);
-            // unregister bundle
-            unregisterResourceBundle(key);
+            resourceBundleRegistry.unregisterResourceBundle(key);
         }
 
         Collection<JcrResourceBundle> dependentBundles = new ArrayList<>();
         // this bundle might be a parent of a cached bundle -> invalidate those dependent bundles as well
-        for (JcrResourceBundle bundle : resourceBundleCache.values()) {
+        for (JcrResourceBundle bundle : resourceBundleRegistry.getResourceBundles()) {
             if (bundle.getParent() instanceof JcrResourceBundle) {
                 JcrResourceBundle parentBundle = (JcrResourceBundle) bundle.getParent();
                 Key parentKey = new Key(parentBundle.getBaseName(), parentBundle.getLocale());
@@ -399,7 +393,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()));
         }
 
-        if (this.preloadBundles) {
+        if (this.preloadBundles && !resourceBundleRegistry.isClosed()) {
             // reload the bundle from the repository (will also fill cache and register as a service)
             getResourceBundleInternal(null, key.baseName, key.locale, true);
         }
@@ -418,9 +412,10 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         this.preloadBundles = config.preload_bundles();
         this.invalidationDelay = config.invalidation_delay();
         this.pathFilter = new PathFilter(config.included_paths(), config.excluded_paths());
-        this.bundleContext = context;
 
-        this.locatorPathsTracker = new BundleTracker<>(this.bundleContext,
+        this.resourceBundleRegistry = new ResourceBundleRegistry(context);
+
+        this.locatorPathsTracker = new BundleTracker<>(context,
                 Bundle.ACTIVE, new LocatorPathsTracker(this));
         this.locatorPathsTracker.open();
 
@@ -431,13 +426,17 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
 
     @Deactivate
     protected void deactivate() {
+
         if (this.locatorPathsTracker != null) {
             this.locatorPathsTracker.close();
             this.locatorPathsTracker = null;
         }
 
+        if (this.resourceBundleRegistry != null) {
+            this.resourceBundleRegistry.close();
+        }
+
         clearCache();
-        this.bundleContext = null;
     }
 
     // ---------- internal -----------------------------------------------------
@@ -455,13 +454,13 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         return getResourceBundleInternal(optionalResolver, baseName, locale, false);
     }
 
-    private ResourceBundle getResourceBundleInternal(ResourceResolver optionalResolver, final String baseName, Locale locale, final boolean overwriteCache) {
+    private ResourceBundle getResourceBundleInternal(ResourceResolver optionalResolver, final String baseName, Locale locale, final boolean forceReload) {
         if (locale == null) {
             locale = defaultLocale;
         }
 
         final Key key = new Key(baseName, locale);
-        JcrResourceBundle resourceBundle = !overwriteCache ? resourceBundleCache.get(key) : null;
+        JcrResourceBundle resourceBundle = !forceReload ? resourceBundleRegistry.getResourceBundle(key) : null;
         if (resourceBundle != null) {
             log.debug("getResourceBundleInternal({}): got cache hit on first try", key);
         } else {
@@ -471,7 +470,7 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
             final Semaphore loadingGuard = loadingGuards.get(key);
             try {
                 loadingGuard.acquire();
-                resourceBundle = !overwriteCache ? resourceBundleCache.get(key) : null;
+                resourceBundle = !forceReload ? resourceBundleRegistry.getResourceBundle(key) : null;
                 if (resourceBundle != null) {
                     log.debug("getResourceBundleInternal({}): got cache hit on second try", key);
                 } else {
@@ -484,12 +483,13 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
                         }
 
                         resourceBundle = createResourceBundle(optionalResolver, key.baseName, key.locale);
-                        // put the newly created ResourceBundle to the cache. If it replaces an existing entry unregister the existing
-                        // service registration first before re-registering the new ResourceBundle.
-                        if (resourceBundleCache.put(key, resourceBundle) != null) {
-                            unregisterResourceBundle(key);
-                        }
-                        registerResourceBundle(key, resourceBundle);
+                        resourceBundleRegistry.registerResourceBundle(key, resourceBundle);
+
+                        final Set<String> languageRoots = resourceBundle.getLanguageRootPaths();
+                        this.languageRootPaths.addAll(languageRoots);
+
+                        log.debug("Key {} - added service registration and language roots {}", key, languageRoots);
+                        log.info("Currently loaded dictionaries across all locales: {}", languageRootPaths);
 
                     } catch ( final LoginException le) {
                         throw (MissingResourceException)new MissingResourceException("Unable to create service resource resolver",
@@ -509,38 +509,6 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         }
         log.trace("getResourceBundleInternal({}) ==> {}", key, resourceBundle);
         return resourceBundle;
-    }
-
-    private void unregisterResourceBundle(Key key) {
-        ServiceRegistration<ResourceBundle> serviceRegistration = null;
-        synchronized (this) {
-            serviceRegistration = bundleServiceRegistrations.remove(key);
-        }
-        if (serviceRegistration != null) {
-            serviceRegistration.unregister();
-        } else {
-            log.warn("Could not find resource bundle service for {}", key);
-        }
-    }
-
-    private void registerResourceBundle(Key key, JcrResourceBundle resourceBundle) {
-        Dictionary<String, Object> serviceProps = new Hashtable<>();
-        if (key.baseName != null) {
-            serviceProps.put("baseName", key.baseName);
-        }
-        serviceProps.put("locale", key.locale.toString());
-        ServiceRegistration<ResourceBundle> serviceReg = bundleContext.registerService(ResourceBundle.class,
-                resourceBundle, serviceProps);
-        synchronized (this) {
-            bundleServiceRegistrations.put(key, serviceReg);
-        }
-
-        // register language root paths
-        final Set<String> languageRoots = resourceBundle.getLanguageRootPaths();
-        this.languageRootPaths.addAll(languageRoots);
-
-        log.debug("registerResourceBundle({}, ...): added service registration and language roots {}", key, languageRoots);
-        log.info("Currently loaded dictionaries across all locales: {}", languageRootPaths);
     }
 
     /**
@@ -609,22 +577,13 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         return rootResourceBundle;
     }
 
-    private void clearCache() {
-        resourceBundleCache.clear();
+    void clearCache() {
         languageRootPaths.clear();
-
-        final List<ServiceRegistration<ResourceBundle>> regs;
-        synchronized (this) {
-            regs = new ArrayList<>(bundleServiceRegistrations.values());
-            bundleServiceRegistrations.clear();
-        }
-        for (final ServiceRegistration<ResourceBundle> serviceReg : regs) {
-            serviceReg.unregister();
-        }
+        resourceBundleRegistry.unregisterAll();
     }
 
     private void preloadBundles() {
-        if (this.preloadBundles) {
+        if (this.preloadBundles && !resourceBundleRegistry.isClosed()) {
             try ( final ResourceResolver resolver = createResourceResolver() ) {
                 final Iterator<Map<String, Object>> bundles = resolver.queryResources(
                     JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
@@ -789,6 +748,102 @@ public class JcrResourceBundleProvider implements ResourceBundleProvider, Resour
         @Override
         public String toString() {
             return "Key(" + baseName + ", " + locale + ")";
+        }
+    }
+
+    /**
+     * Registry of the loaded <code>resource bundles</code> and the associated <code>service registrations</code>
+     * The <code>ResourceBundleRegistry</code> takes care of the registration/deregistration of the resource bundles as OSGi services.
+     * It stores the references to the registered resource bundles and to the associated service registrations.
+     */
+    private static class ResourceBundleRegistry implements AutoCloseable {
+        private final Logger log = LoggerFactory.getLogger(getClass());
+        private final BundleContext bundleContext;
+        final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicReference<ConcurrentHashMap<Key, Entry>> registrations;
+
+        private static class Entry {
+            final JcrResourceBundle resourceBundle;
+            final ServiceRegistration<ResourceBundle> serviceRegistration;
+
+            Entry(JcrResourceBundle resourceBundle, ServiceRegistration<ResourceBundle> serviceRegistration) {
+                this.resourceBundle = resourceBundle;
+                this.serviceRegistration = serviceRegistration;
+            }
+        }
+
+        ResourceBundleRegistry(BundleContext bundleContext) {
+            this.bundleContext = bundleContext;
+            this.registrations = new AtomicReference<>(new ConcurrentHashMap<>());
+        }
+
+        JcrResourceBundle getResourceBundle(Key key) {
+            Entry entry = registrations.get().get(key);
+            return entry != null ? entry.resourceBundle : null;
+        }
+
+        Collection<JcrResourceBundle> getResourceBundles() {
+            return registrations.get().values().stream().map(e -> e.resourceBundle).collect(Collectors.toList());
+        }
+
+        void registerResourceBundle(Key key, JcrResourceBundle resourceBundle) {
+            if (closed.get()) {
+                return;
+            }
+            ServiceRegistration<ResourceBundle> serviceReg = bundleContext.registerService(ResourceBundle.class, resourceBundle, serviceProps(key));
+            Entry oldEntry = registrations.get().put(key, new Entry(resourceBundle, serviceReg));
+            if (oldEntry != null) {
+                oldEntry.serviceRegistration.unregister();
+            }
+            log.debug("[ResourceBundleRegistry.updateResourceBundle] Registry updated - Nr of entries: {} - Keys: {}", registrations.get().size(), registrations.get().keySet());
+        }
+
+        private static Dictionary<String, Object> serviceProps(Key key) {
+            Dictionary<String, Object> serviceProps = new Hashtable<>();
+            if (key.baseName != null) {
+                serviceProps.put("baseName", key.baseName);
+            }
+            serviceProps.put("locale", key.locale.toString());
+            return serviceProps;
+        }
+
+        void unregisterResourceBundle(Key key) {
+            if (closed.get()) {
+                return;
+            }
+            Entry oldEntry = registrations.get().remove(key);
+            if (oldEntry != null) {
+                oldEntry.serviceRegistration.unregister();
+            } else {
+                log.warn("[ResourceBundleRegistry.unregisterResourceBundle] Could not find resource bundle service for {}", key);
+            }
+        }
+
+        void unregisterAll() {
+            if (closed.get()) {
+                return;
+            }
+            unregisterAllInternal();
+        }
+
+        private void unregisterAllInternal() {
+            log.debug("[ResourceBundleRegistry.clearInternal] Before - Nr of Keys: {} - Keys: {}", registrations.get().size(), registrations.get().keySet());
+            ConcurrentHashMap<Key,Entry> oldServiceReg = registrations.getAndSet(new ConcurrentHashMap<>());
+            for(Entry entry : oldServiceReg.values()) {
+                entry.serviceRegistration.unregister();
+            }
+            log.debug("[ResourceBundleRegistry.clearInternal] After - Nr of Keys: {} - Keys: {}", registrations.get().size(), registrations.get().keySet());
+        }
+
+        boolean isClosed() {
+            return closed.get();
+        }
+
+        @Override
+        public void close() {
+            if (closed.compareAndSet(false, true)) {
+                unregisterAllInternal();
+            }
         }
     }
 }
