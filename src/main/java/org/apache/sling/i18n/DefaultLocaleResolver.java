@@ -23,8 +23,6 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 
-import javax.servlet.http.HttpServletRequest;
-
 import org.apache.sling.api.SlingHttpServletRequest;
 
 /**
@@ -41,18 +39,32 @@ public class DefaultLocaleResolver implements LocaleResolver, RequestLocaleResol
      * <code>List</code>.
      */
     public List<Locale> resolveLocale(final SlingHttpServletRequest request) {
-        return this.resolveLocale((HttpServletRequest)request);
+        return this.resolveLocale((javax.servlet.http.HttpServletRequest)request);
     }
 
     /**
      * @see org.apache.sling.i18n.RequestLocaleResolver#resolveLocale(javax.servlet.http.HttpServletRequest)
      */
-    public List<Locale> resolveLocale(final HttpServletRequest request) {
+    public List<Locale> resolveLocale(final javax.servlet.http.HttpServletRequest request) {
         Enumeration<?> locales = request.getLocales();
-        ArrayList<Locale> localeList = new ArrayList<Locale>();
+        ArrayList<Locale> localeList = new ArrayList<>();
         while (locales.hasMoreElements()) {
             localeList.add((Locale) locales.nextElement());
         }
         return localeList;
     }
+
+    /**
+     * @see org.apache.sling.i18n.RequestLocaleResolver#resolveLocale(jakarta.servlet.http.HttpServletRequest)
+     */
+    @Override
+    public List<Locale> resolveLocale(jakarta.servlet.http.HttpServletRequest request) {
+        Enumeration<?> locales = request.getLocales();
+        ArrayList<Locale> localeList = new ArrayList<>();
+        while (locales.hasMoreElements()) {
+            localeList.add((Locale) locales.nextElement());
+        }
+        return localeList;
+    }
+
 }
