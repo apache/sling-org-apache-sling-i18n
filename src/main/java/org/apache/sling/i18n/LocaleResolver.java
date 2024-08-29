@@ -53,5 +53,4 @@ public interface LocaleResolver {
      *         of request processing
      */
     List<Locale> resolveLocale(SlingHttpServletRequest request);
-
 }

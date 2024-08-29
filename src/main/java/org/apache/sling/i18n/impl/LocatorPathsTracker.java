@@ -1,18 +1,20 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 package org.apache.sling.i18n.impl;
 
@@ -29,7 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Handles watching bundles for registration of ResourceBundle locator paths 
+ * Handles watching bundles for registration of ResourceBundle locator paths
  */
 class LocatorPathsTracker implements BundleTrackerCustomizer<Set<LocatorPaths>> {
 
@@ -47,8 +49,7 @@ class LocatorPathsTracker implements BundleTrackerCustomizer<Set<LocatorPaths>> 
 
     @Override
     public Set<LocatorPaths> addingBundle(Bundle bundle, BundleEvent event) {
-        log.debug("Considering bundle for registering resource bundle locator paths: {}",
-                bundle.getSymbolicName());
+        log.debug("Considering bundle for registering resource bundle locator paths: {}", bundle.getSymbolicName());
         Set<LocatorPaths> pathsSet = null;
 
         String provideCapability = bundle.getHeaders().get(Constants.PROVIDE_CAPABILITY);
@@ -82,8 +83,10 @@ class LocatorPathsTracker implements BundleTrackerCustomizer<Set<LocatorPaths>> 
             }
 
             if (pathsSet != null) {
-                log.info("Registered {} resource bundle locator paths for bundle: {}",
-                        pathsSet.size(), bundle.getSymbolicName());
+                log.info(
+                        "Registered {} resource bundle locator paths for bundle: {}",
+                        pathsSet.size(),
+                        bundle.getSymbolicName());
                 this.rbp.registerLocatorPaths(pathsSet);
             }
         }
@@ -97,9 +100,10 @@ class LocatorPathsTracker implements BundleTrackerCustomizer<Set<LocatorPaths>> 
 
     @Override
     public void removedBundle(Bundle bundle, BundleEvent event, Set<LocatorPaths> baseNamesSet) {
-        log.info("Unregistered {} resource bundle locator paths for bundle: {}",
-                baseNamesSet.size(), bundle.getSymbolicName());
+        log.info(
+                "Unregistered {} resource bundle locator paths for bundle: {}",
+                baseNamesSet.size(),
+                bundle.getSymbolicName());
         this.rbp.unregisterLocatorPaths(baseNamesSet);
     }
-
 }

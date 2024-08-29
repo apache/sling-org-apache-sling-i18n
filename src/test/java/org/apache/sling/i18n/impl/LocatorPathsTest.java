@@ -18,10 +18,10 @@
  */
 package org.apache.sling.i18n.impl;
 
+import org.junit.Test;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
-
-import org.junit.Test;
 
 /**
  * SLING-10135 Test LocatorPaths methods
@@ -78,7 +78,6 @@ public class LocatorPathsTest {
 
         assertEquals(false, paths1.equals(null));
     }
-
 
     @Test
     public void testHashCode() {
@@ -139,5 +138,4 @@ public class LocatorPathsTest {
         assertNotEquals(paths1, paths2);
         assertNotEquals(paths1.hashCode(), paths2.hashCode());
     }
-
 }

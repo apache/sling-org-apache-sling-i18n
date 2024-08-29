@@ -37,32 +37,31 @@ public abstract class I18nTestSupport extends TestSupport {
     @Configuration
     public Option[] configuration() {
         return options(
-            baseConfiguration(),
-            quickstart(),
-            // Sling I18N
-            testBundle("bundle.filename"),
-            factoryConfiguration("org.apache.sling.jcr.repoinit.RepositoryInitializer")
-                .put("scripts", new String[]{"create service user sling-i18n\n\n  set ACL for sling-i18n\n\n    allow   jcr:read    on /\n\n  end"})
-                .asOption(),
-            factoryConfiguration("org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended")
-                .put("user.mapping", new String[]{"org.apache.sling.i18n=sling-i18n"})
-                .asOption(),
-            // testing
-            newConfiguration("org.apache.sling.jcr.base.internal.LoginAdminWhitelist")
-                .put("whitelist.bundles.regexp", "PAXEXAM-PROBE-.*")
-                .asOption(),
-            junitBundles(),
-            optionalRemoteDebug(),
-            optionalJacocoCommand()            
-        );
+                baseConfiguration(),
+                quickstart(),
+                // Sling I18N
+                testBundle("bundle.filename"),
+                factoryConfiguration("org.apache.sling.jcr.repoinit.RepositoryInitializer")
+                        .put("scripts", new String[] {
+                            "create service user sling-i18n\n\n  set ACL for sling-i18n\n\n    allow   jcr:read    on /\n\n  end"
+                        })
+                        .asOption(),
+                factoryConfiguration("org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended")
+                        .put("user.mapping", new String[] {"org.apache.sling.i18n=sling-i18n"})
+                        .asOption(),
+                // testing
+                newConfiguration("org.apache.sling.jcr.base.internal.LoginAdminWhitelist")
+                        .put("whitelist.bundles.regexp", "PAXEXAM-PROBE-.*")
+                        .asOption(),
+                junitBundles(),
+                optionalRemoteDebug(),
+                optionalJacocoCommand());
     }
 
     protected Option quickstart() {
         final int httpPort = findFreePort();
         final String workingDirectory = workingDirectory();
-        return composite(
-            slingQuickstartOakTar(workingDirectory, httpPort)
-        );
+        return composite(slingQuickstartOakTar(workingDirectory, httpPort));
     }
 
     /**
@@ -90,5 +89,4 @@ public abstract class I18nTestSupport extends TestSupport {
         }
         return composite(option);
     }
-    
 }

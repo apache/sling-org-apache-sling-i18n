@@ -57,4 +57,3 @@ public class Message {
         node.setProperty("sling:message", message);
     }
 }
-

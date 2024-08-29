@@ -18,12 +18,12 @@
  */
 package org.apache.sling.i18n;
 
+import javax.servlet.http.HttpServletRequest;
+
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
-
-import javax.servlet.http.HttpServletRequest;
 
 import org.apache.sling.api.SlingHttpServletRequest;
 
@@ -41,7 +41,7 @@ public class DefaultLocaleResolver implements LocaleResolver, RequestLocaleResol
      * <code>List</code>.
      */
     public List<Locale> resolveLocale(final SlingHttpServletRequest request) {
-        return this.resolveLocale((HttpServletRequest)request);
+        return this.resolveLocale((HttpServletRequest) request);
     }
 
     /**

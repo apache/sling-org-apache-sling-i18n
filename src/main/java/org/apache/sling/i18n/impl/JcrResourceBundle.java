@@ -76,14 +76,17 @@ public class JcrResourceBundle extends ResourceBundle {
 
     private final Set<String> languageRoots = new HashSet<>();
 
-    JcrResourceBundle(final Locale locale, final String baseName,
-            final ResourceResolver resourceResolver, 
+    JcrResourceBundle(
+            final Locale locale,
+            final String baseName,
+            final ResourceResolver resourceResolver,
             final List<LocatorPaths> locatorPaths,
             final PathFilter filter) {
         this.locale = locale;
         this.baseName = baseName;
 
-        log.info("Finding all dictionaries for '{}' (basename: {}) ...", locale, baseName == null ? "<none>" : baseName);
+        log.info(
+                "Finding all dictionaries for '{}' (basename: {}) ...", locale, baseName == null ? "<none>" : baseName);
 
         final long start = System.currentTimeMillis();
         final Set<String> roots = loadPotentialLanguageRoots(resourceResolver, locale, baseName, locatorPaths, filter);
@@ -92,9 +95,8 @@ public class JcrResourceBundle extends ResourceBundle {
         if (log.isInfoEnabled()) {
             final long end = System.currentTimeMillis();
             log.info(
-                "Finished loading {} entries for '{}' (basename: {}) in {}ms",
-                new Object[] { resources.size(), locale, baseName == null ? "<none>" : baseName, (end - start)}
-            );
+                    "Finished loading {} entries for '{}' (basename: {}) in {}ms",
+                    new Object[] {resources.size(), locale, baseName == null ? "<none>" : baseName, (end - start)});
         }
     }
 
@@ -135,16 +137,16 @@ public class JcrResourceBundle extends ResourceBundle {
 
     @Override
     public Enumeration<String> getKeys() {
-        Enumeration<String> parentKeys = (parent != null)
-                ? parent.getKeys()
-                : null;
+        Enumeration<String> parentKeys = (parent != null) ? parent.getKeys() : null;
         return new ResourceBundleEnumeration(resources.keySet(), parentKeys);
     }
 
     @Override
     protected Object handleGetObject(String key) {
         if (log.isDebugEnabled()) {
-            log.debug("Requesting key '{}' from resource bundle (baseName '{}', locale '{}')", new Object[] {key, baseName, locale});
+            log.debug(
+                    "Requesting key '{}' from resource bundle (baseName '{}', locale '{}')",
+                    new Object[] {key, baseName, locale});
         }
         return resources.get(key);
     }
@@ -168,7 +170,8 @@ public class JcrResourceBundle extends ResourceBundle {
      *
      * @throws NullPointerException if either of the parameters is {@code null}.
      */
-    private Map<String, Object> loadFully(final ResourceResolver resolver, Set<String> roots, Set<String> languageRoots) {
+    private Map<String, Object> loadFully(
+            final ResourceResolver resolver, Set<String> roots, Set<String> languageRoots) {
 
         final String[] searchPath = resolver.getSearchPath();
 
@@ -185,7 +188,7 @@ public class JcrResourceBundle extends ResourceBundle {
             dictionariesBySearchPath.add(new ArrayList<Map<String, Object>>());
         }
 
-        for (final String root: roots) {
+        for (final String root : roots) {
 
             Resource dictionaryResource = resolver.getResource(root);
             if (dictionaryResource == null) {
@@ -259,16 +262,22 @@ public class JcrResourceBundle extends ResourceBundle {
 
             @Override
             public void object() throws IOException {}
+
             @Override
             public void endObject() throws IOException {}
+
             @Override
             public void array() throws IOException {}
+
             @Override
             public void endArray() throws IOException {}
+
             @Override
             public void value(boolean value) throws IOException {}
+
             @Override
             public void value(long value) throws IOException {}
+
             @Override
             public void value(double value) throws IOException {}
         });
@@ -303,27 +312,29 @@ public class JcrResourceBundle extends ResourceBundle {
      */
     private void scanForSlingMessages(final Resource rsrc, final Map<String, Object> targetDictionary) {
         final ValueMap vm = rsrc.adaptTo(ValueMap.class);
-        if ( vm != null ) {
+        if (vm != null) {
             final String value = vm.get(PROP_VALUE, String.class);
-            if ( value != null ) {
+            if (value != null) {
                 final String key = vm.get(PROP_KEY, rsrc.getName());
                 targetDictionary.put(key, value);
             }
         }
 
-        for(final Resource c : rsrc.getChildren()) {
+        for (final Resource c : rsrc.getChildren()) {
             scanForSlingMessages(c, targetDictionary);
         }
     }
 
-    private void loadSlingMessageDictionary(final Resource dictionaryResource, final Map<String, Object> targetDictionary) {
+    private void loadSlingMessageDictionary(
+            final Resource dictionaryResource, final Map<String, Object> targetDictionary) {
         log.info("Loading sling:Message dictionary: {}", dictionaryResource.getPath());
 
         this.scanForSlingMessages(dictionaryResource, targetDictionary);
     }
 
-    private Set<String> loadPotentialLanguageRoots(final ResourceResolver resourceResolver,
-            final Locale locale, 
+    private Set<String> loadPotentialLanguageRoots(
+            final ResourceResolver resourceResolver,
+            final Locale locale,
             final String baseName,
             final Collection<LocatorPaths> locatorPaths,
             final PathFilter filter) {
@@ -339,7 +350,10 @@ public class JcrResourceBundle extends ResourceBundle {
                 if (filter.includePath(bundle.getPath())) {
                     paths.add(bundle.getPath());
                 } else {
-                    log.warn("Ignoring i18n bundle for language {} at {} because it is not included by the path filter", locale, bundle.getPath());
+                    log.warn(
+                            "Ignoring i18n bundle for language {} at {} because it is not included by the path filter",
+                            locale,
+                            bundle.getPath());
                 }
             }
         }
@@ -348,13 +362,16 @@ public class JcrResourceBundle extends ResourceBundle {
             // next traverse the ancestors of all of the locator paths
             final LocatorPathsVisitor visitor = new LocatorPathsVisitor(check, paths);
             for (final LocatorPaths locator : locatorPaths) {
-                if ( filter.includePath(locator.getPath())) {
+                if (filter.includePath(locator.getPath())) {
                     final Resource parentResource = resourceResolver.getResource(locator.getPath());
                     if (parentResource != null) {
                         visitor.accept(parentResource, locator.getTraverseDepth());
-                    }    
+                    }
                 } else {
-                    log.warn("Ignoring i18n bundle for language {} at {} because it is not included by the path filter", locale, locator.getPath());
+                    log.warn(
+                            "Ignoring i18n bundle for language {} at {} because it is not included by the path filter",
+                            locale,
+                            locator.getPath());
                 }
             }
         }

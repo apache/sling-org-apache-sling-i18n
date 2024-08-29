@@ -34,6 +34,13 @@
     <name>Apache Sling I18N Support</name>
     <description>Support for creating Java I18N ResourceBundles from repository resources.</description>
 
+    <scm>
+        <connection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</connection>
+        <developerConnection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</developerConnection>
+        <tag>HEAD</tag>
+        <url>https://github.com/apache/sling-org-apache-sling-i18n.git</url>
+    </scm>
+
     <properties>
         <project.build.outputTimestamp>2024-08-20T12:35:28Z</project.build.outputTimestamp>
         <org.ops4j.pax.exam.version>4.13.3</org.ops4j.pax.exam.version>
@@ -41,65 +48,6 @@
         <oak.version>1.22</oak.version>
         <sling.java.version>8</sling.java.version>
     </properties>
-
-    <scm>
-        <connection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</connection>
-        <developerConnection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</developerConnection>
-        <url>https://github.com/apache/sling-org-apache-sling-i18n.git</url>
-        <tag>HEAD</tag>
-    </scm>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.rat</groupId>
-                <artifactId>apache-rat-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>**/*.json.props</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <configuration>
-                    <excludePackageNames>
-                        org.apache.sling.i18n.impl
-                    </excludePackageNames>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
-                    <systemPropertyVariables>
-                        <bundle.filename>${basedir}/target/${project.build.finalName}.jar</bundle.filename>
-                    </systemPropertyVariables>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.servicemix.tooling</groupId>
-                <artifactId>depends-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 
     <dependencies>
         <!-- javax -->
@@ -287,4 +235,54 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.rat</groupId>
+                <artifactId>apache-rat-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*.json.props</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <excludePackageNames>org.apache.sling.i18n.impl</excludePackageNames>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                    <systemPropertyVariables>
+                        <bundle.filename>${basedir}/target/${project.build.finalName}.jar</bundle.filename>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.servicemix.tooling</groupId>
+                <artifactId>depends-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

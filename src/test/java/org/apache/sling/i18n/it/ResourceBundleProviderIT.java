@@ -18,13 +18,13 @@
  */
 package org.apache.sling.i18n.it;
 
-import java.util.Locale;
-import java.util.ResourceBundle;
-
 import javax.inject.Inject;
 import javax.jcr.Node;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
+
+import java.util.Locale;
+import java.util.ResourceBundle;
 
 import org.apache.sling.i18n.ResourceBundleProvider;
 import org.apache.sling.jcr.api.SlingRepository;
@@ -65,8 +65,7 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
     private Node enRoot;
     private Node enBasenameRoot;
 
-
-    static abstract class Retry {
+    abstract static class Retry {
         Retry(int timeoutMsec) {
             final long timeout = System.currentTimeMillis() + timeoutMsec;
             Throwable lastT = null;
@@ -136,7 +135,8 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
             @Override
             protected void exec() {
                 {
-                    final ResourceBundle resourceBundle = resourceBundleProvider.getResourceBundle(basename, locale); // this is the resource bundle for de_DE
+                    final ResourceBundle resourceBundle = resourceBundleProvider.getResourceBundle(
+                            basename, locale); // this is the resource bundle for de_DE
                     assertNotNull(resourceBundle);
                     assertEquals(value, resourceBundle.getString(key));
                 }
@@ -144,7 +144,8 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
         };
     }
 
-    private void assertMessages(final String key, final String deMessage, final String deDeMessage, final String frMessage) {
+    private void assertMessages(
+            final String key, final String deMessage, final String deDeMessage, final String frMessage) {
         assertMessage(key, Locale.GERMAN, null, deMessage);
         assertMessage(key, Locale.GERMANY, null, deDeMessage);
         assertMessage(key, Locale.FRENCH, null, frMessage);
@@ -216,5 +217,4 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
         assertMessage(MSG_KEY3, Locale.ENGLISH, null, "EN_basename_changed");
         assertMessage(MSG_KEY3, Locale.ENGLISH, BASENAME, "EN_basename_changed");
     }
-
 }

@@ -41,10 +41,10 @@ class PotentialLanguageRootCheck {
         this.localeRFC4646String = toRFC4646String(locale);
         this.localeRFC4646StringLower = localeRFC4646String.toLowerCase();
     }
-    
+
     /**
      * Checks if the specified resource is a match for a resource bundle resource
-     * 
+     *
      * @param resource the resource to check
      */
     public boolean isResourceBundle(Resource resource) {
@@ -58,7 +58,7 @@ class PotentialLanguageRootCheck {
                         || language.equals(localeRFC4646String)
                         || language.equals(localeRFC4646StringLower)) {
                     // basename might be a multivalue (see https://issues.apache.org/jira/browse/SLING-4547)
-                    String[] baseNames = properties.get(JcrResourceBundle.PROP_BASENAME, new String[]{});
+                    String[] baseNames = properties.get(JcrResourceBundle.PROP_BASENAME, new String[] {});
                     if (baseName == null || Arrays.asList(baseNames).contains(baseName)) {
                         match = true;
                     }
@@ -72,5 +72,4 @@ class PotentialLanguageRootCheck {
     private static String toRFC4646String(Locale locale) {
         return locale.toString().replace('_', '-');
     }
-
 }
