@@ -24,7 +24,7 @@
     <parent>
         <groupId>org.apache.sling</groupId>
         <artifactId>sling-bundle-parent</artifactId>
-        <version>46</version>
+        <version>60</version>
         <relativePath />
     </parent>
 
@@ -39,6 +39,7 @@
         <org.ops4j.pax.exam.version>4.13.3</org.ops4j.pax.exam.version>
         <jackrabbit.version>2.20.0</jackrabbit.version>
         <oak.version>1.22</oak.version>
+        <sling.java.version>8</sling.java.version>
     </properties>
 
     <scm>
@@ -60,14 +61,6 @@
                 </configuration>
             </plugin>
             <plugin>
-                <groupId>biz.aQute.bnd</groupId>
-                <artifactId>bnd-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>biz.aQute.bnd</groupId>
-                <artifactId>bnd-baseline-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <configuration>
@@ -75,10 +68,6 @@
                         org.apache.sling.i18n.impl
                     </excludePackageNames>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-source-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -115,11 +104,6 @@
     <dependencies>
         <!-- javax -->
         <dependency>
-            <groupId>javax.inject</groupId>
-            <artifactId>javax.inject</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>javax.servlet</groupId>
             <artifactId>javax.servlet-api</artifactId>
             <scope>provided</scope>
@@ -132,7 +116,12 @@
         </dependency>
         <dependency>
             <groupId>org.osgi</groupId>
-            <artifactId>osgi.core</artifactId>
+            <artifactId>org.osgi.framework</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.osgi</groupId>
+            <artifactId>org.osgi.util.tracker</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -143,7 +132,6 @@
         <dependency>
             <groupId>org.osgi</groupId>
             <artifactId>org.osgi.service.http.whiteboard</artifactId>
-            <version>1.0.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -182,6 +170,7 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.sling</groupId>
@@ -195,6 +184,7 @@
             <version>1.4.6</version>
             <scope>provided</scope>
         </dependency>
+        <!-- Testing -->
         <dependency>
             <groupId>org.apache.sling</groupId>
             <artifactId>org.apache.sling.testing.paxexam</artifactId>
@@ -208,7 +198,11 @@
             <version>7.0.5</version>
             <scope>test</scope>
         </dependency>
-        <!-- Testing -->
+        <dependency>
+            <groupId>javax.inject</groupId>
+            <artifactId>javax.inject</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>javax.jcr</groupId>
             <artifactId>jcr</artifactId>
