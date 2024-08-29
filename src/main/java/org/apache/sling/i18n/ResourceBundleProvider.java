@@ -72,5 +72,4 @@ public interface ResourceBundleProvider {
      *             returning a <code>ResourceBundle</code>
      */
     ResourceBundle getResourceBundle(String baseName, Locale locale);
-
 }

@@ -18,10 +18,10 @@
  */
 package org.apache.sling.i18n;
 
+import javax.servlet.http.HttpServletRequest;
+
 import java.util.List;
 import java.util.Locale;
-
-import javax.servlet.http.HttpServletRequest;
 
 /**
  * The <code>RequestLocaleResolver</code> service interface may be implemented by a
@@ -52,5 +52,4 @@ public interface RequestLocaleResolver {
      *         of request processing
      */
     List<Locale> resolveLocale(HttpServletRequest request);
-
 }

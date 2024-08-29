@@ -18,12 +18,9 @@
  */
 package org.apache.sling.i18n.it;
 
-import static org.apache.sling.testing.paxexam.SlingOptions.slingBundleresource;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.ops4j.pax.exam.CoreOptions.composite;
-import static org.ops4j.pax.exam.CoreOptions.streamBundle;
-import static org.ops4j.pax.tinybundles.core.TinyBundles.withBnd;
+import javax.inject.Inject;
+import javax.jcr.RepositoryException;
+import javax.jcr.Session;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -33,10 +30,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.ResourceBundle;
 
-import javax.inject.Inject;
-import javax.jcr.RepositoryException;
-import javax.jcr.Session;
-
+import com.google.common.collect.ImmutableListMultimap;
+import com.google.common.collect.Multimap;
 import org.apache.commons.io.IOUtils;
 import org.apache.sling.i18n.ResourceBundleProvider;
 import org.apache.sling.jcr.api.SlingRepository;
@@ -55,8 +50,12 @@ import org.osgi.framework.Constants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.ImmutableListMultimap;
-import com.google.common.collect.Multimap;
+import static org.apache.sling.testing.paxexam.SlingOptions.slingBundleresource;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.ops4j.pax.exam.CoreOptions.composite;
+import static org.ops4j.pax.exam.CoreOptions.streamBundle;
+import static org.ops4j.pax.tinybundles.core.TinyBundles.withBnd;
 
 /**
  * Tests for SLING-10135 for locating resource bundle resources
@@ -66,7 +65,7 @@ import com.google.common.collect.Multimap;
 @ExamReactorStrategy(PerClass.class)
 public class ResourceBundleLocatorIT extends I18nTestSupport {
     private final Logger logger = LoggerFactory.getLogger(ResourceBundleLocatorIT.class);
-    
+
     public static final String MSG_KEY1 = "hello";
     public static final String MSG_KEY2 = "test1";
 
@@ -91,34 +90,33 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
     public Option[] configuration() {
         // create 4 tiny bundles with different configurations for testing
         Option[] bundle = new Option[7];
-        for (int i=0; i <=6; i++) {
+        for (int i = 0; i <= 6; i++) {
             String bundleSymbolicName = String.format("TEST-I18N-BUNDLE-%d", i);
 
             String baseName = String.format("org.apache.sling.i18n.testing%d.Resources", i);
 
             String traversePath;
             if (i == 5) {
-            	traversePath = "";
+                traversePath = "";
             } else if (i == 6) {
-            	traversePath = null;
+                traversePath = null;
             } else {
-            	traversePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
+                traversePath = String.format("/libs/i18n/testing%d", i); // NOSONAR
             }
             String resourcePath;
             if (i <= 1) {
-                resourcePath = String.format("/libs/i18n/testing%d", i); //NOSONAR
+                resourcePath = String.format("/libs/i18n/testing%d", i); // NOSONAR
             } else if (i == 2) {
-                resourcePath = String.format("/libs/i18n/testing%d/folder1", i); //NOSONAR
+                resourcePath = String.format("/libs/i18n/testing%d/folder1", i); // NOSONAR
             } else {
-                resourcePath = String.format("/libs/i18n/testing%d/folder1/folder2", i); //NOSONAR
+                resourcePath = String.format("/libs/i18n/testing%d/folder1/folder2", i); // NOSONAR
             }
             String pathInBundle = String.format("SLING-INF%s", resourcePath);
             final Multimap<String, String> content = ImmutableListMultimap.of(
                     pathInBundle, "Resources.json",
                     pathInBundle, "Resources.json.props",
                     pathInBundle, "Resources_en_CA.json",
-                    pathInBundle, "Resources_en_CA.json.props"
-            );
+                    pathInBundle, "Resources_en_CA.json.props");
             int traverseDepth;
             if (i < 4) {
                 traverseDepth = i;
@@ -126,25 +124,22 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
                 traverseDepth = 1;
             }
             try {
-                bundle[i] = buildContentBundle(bundleSymbolicName, 
-                                                    pathInBundle, resourcePath, 
-                                                    traversePath, traverseDepth, 
-                                                    content, baseName);
+                bundle[i] = buildContentBundle(
+                        bundleSymbolicName, pathInBundle, resourcePath, traversePath, traverseDepth, content, baseName);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to build the content bundle", e);
             }
         }
-        
-        return composite(composite(super.configuration()),
-                        slingBundleresource(),
-                         composite(bundle))
+
+        return composite(composite(super.configuration()), slingBundleresource(), composite(bundle))
                 .getOptions();
     }
 
     /**
      * Add content to our test bundle
      */
-    protected void addContent(final TinyBundle bundle, String pathInBundle, String resourcePath, Object ... args) throws IOException {
+    protected void addContent(final TinyBundle bundle, String pathInBundle, String resourcePath, Object... args)
+            throws IOException {
         pathInBundle += "/" + resourcePath;
         resourcePath = "/test-content/" + resourcePath;
         try (final InputStream is = getClass().getResourceAsStream(resourcePath)) {
@@ -162,25 +157,40 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
         }
     }
 
-    protected Option buildContentBundle(String bundleSymbolicName, 
-            String pathInBundle, String resourcePath, 
-            String traversePath, int traverseDepth, 
-            final Multimap<String, String> content, String basename) throws IOException {
+    protected Option buildContentBundle(
+            String bundleSymbolicName,
+            String pathInBundle,
+            String resourcePath,
+            String traversePath,
+            int traverseDepth,
+            final Multimap<String, String> content,
+            String basename)
+            throws IOException {
         final TinyBundle bundle = TinyBundles.bundle();
         bundle.set(Constants.BUNDLE_SYMBOLICNAME, bundleSymbolicName);
-        bundle.set(Constants.REQUIRE_CAPABILITY, "osgi.extender;filter:=\"(&(osgi.extender=org.apache.sling.i18n.resourcebundle.locator.registrar)(version<=1.0.0)(!(version>=2.0.0)))\"");
+        bundle.set(
+                Constants.REQUIRE_CAPABILITY,
+                "osgi.extender;filter:=\"(&(osgi.extender=org.apache.sling.i18n.resourcebundle.locator.registrar)(version<=1.0.0)(!(version>=2.0.0)))\"");
         if (traverseDepth <= 0) {
-        	if (traversePath == null) {
+            if (traversePath == null) {
                 bundle.set(Constants.PROVIDE_CAPABILITY, "org.apache.sling.i18n.resourcebundle.locator");
-        	} else {
-                bundle.set(Constants.PROVIDE_CAPABILITY, String.format("org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\"", traversePath));
-        	}
+            } else {
+                bundle.set(
+                        Constants.PROVIDE_CAPABILITY,
+                        String.format("org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\"", traversePath));
+            }
         } else {
-        	if (traversePath == null) {
-                bundle.set(Constants.PROVIDE_CAPABILITY, String.format("org.apache.sling.i18n.resourcebundle.locator;depth=%d", traverseDepth));
-        	} else {
-                bundle.set(Constants.PROVIDE_CAPABILITY, String.format("org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\";depth=%d", traversePath, traverseDepth));
-        	}
+            if (traversePath == null) {
+                bundle.set(
+                        Constants.PROVIDE_CAPABILITY,
+                        String.format("org.apache.sling.i18n.resourcebundle.locator;depth=%d", traverseDepth));
+            } else {
+                bundle.set(
+                        Constants.PROVIDE_CAPABILITY,
+                        String.format(
+                                "org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\";depth=%d",
+                                traversePath, traverseDepth));
+            }
         }
         bundle.set("Sling-Bundle-Resources", String.format("%s;path:=%s;propsJSON:=props", resourcePath, pathInBundle));
 
@@ -195,9 +205,7 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
                 addContent(bundle, entryPathInBundle, entryResourcePath);
             }
         }
-        return streamBundle(
-            bundle.build(withBnd())
-        ).start();
+        return streamBundle(bundle.build(withBnd())).start();
     }
 
     @Before

@@ -35,9 +35,9 @@ class LocatorPathsVisitor extends AbstractResourceVisitor {
 
     /**
      * Constructor to prepare visitor
-     * 
+     *
      * @param check the callback to check the resource for a match
-     * @param paths the language 
+     * @param paths the language
      * @param traverseDepth the maximum depth to traverse the descendant
      */
     public LocatorPathsVisitor(PotentialLanguageRootCheck check, Set<String> paths) {
@@ -74,5 +74,4 @@ class LocatorPathsVisitor extends AbstractResourceVisitor {
             paths.add(res.getPath());
         }
     }
-
 }

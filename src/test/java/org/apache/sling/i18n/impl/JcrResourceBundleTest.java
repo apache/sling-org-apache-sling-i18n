@@ -18,9 +18,11 @@
  */
 package org.apache.sling.i18n.impl;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import javax.jcr.Binary;
+import javax.jcr.Node;
+import javax.jcr.RepositoryException;
+import javax.jcr.Session;
+import javax.jcr.util.TraversingItemVisitor;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -34,12 +36,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import javax.jcr.Binary;
-import javax.jcr.Node;
-import javax.jcr.RepositoryException;
-import javax.jcr.Session;
-import javax.jcr.util.TraversingItemVisitor;
-
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.testing.mock.jcr.MockJcr;
 import org.apache.sling.testing.mock.jcr.MockQueryResult;
@@ -48,6 +44,10 @@ import org.apache.sling.testing.mock.sling.junit.SlingContext;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests the {@link JcrResourceBundle} class.
@@ -67,9 +67,9 @@ public class JcrResourceBundleTest {
     public void setUp() throws Exception {
         Session session = getSession();
         String[] cndResourcesToLoad = new String[] {
-                "/org/apache/jackrabbit/oak/builtin_nodetypes.cnd",
-                "/SLING-INF/nodetypes/jcrlanguage.cnd",
-                "/SLING-INF/nodetypes/message.cnd"
+            "/org/apache/jackrabbit/oak/builtin_nodetypes.cnd",
+            "/SLING-INF/nodetypes/jcrlanguage.cnd",
+            "/SLING-INF/nodetypes/message.cnd"
         };
         for (String resourceName : cndResourcesToLoad) {
             URL cndUrl = getClass().getResource(resourceName);
@@ -148,7 +148,8 @@ public class JcrResourceBundleTest {
     }
 
     public void createTestContent() throws Exception {
-        Node i18n = getSession().getRootNode().addNode("libs", "nt:unstructured").addNode("i18n", "nt:unstructured");
+        Node i18n =
+                getSession().getRootNode().addNode("libs", "nt:unstructured").addNode("i18n", "nt:unstructured");
 
         // some DE content
         Node de = i18n.addNode("de", "nt:folder");
@@ -254,7 +255,8 @@ public class JcrResourceBundleTest {
     public void test_bundle_parenting() {
         // set parent of resource bundle, test if passed through
         JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
-        JcrResourceBundle parentBundle = new JcrResourceBundle(new Locale("en"), null, resolver, null, new PathFilter());
+        JcrResourceBundle parentBundle =
+                new JcrResourceBundle(new Locale("en"), null, resolver, null, new PathFilter());
         bundle.setParent(parentBundle);
         parentBundle.setParent(new RootResourceBundle());
 
@@ -286,7 +288,8 @@ public class JcrResourceBundleTest {
         while (keys.hasMoreElements()) {
             counter++;
             String key = keys.nextElement();
-            assertTrue("bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
+            assertTrue(
+                    "bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
         }
         assertEquals(MESSAGES_DE.size(), counter);
     }
@@ -334,7 +337,8 @@ public class JcrResourceBundleTest {
         while (keys.hasMoreElements()) {
             counter++;
             String key = keys.nextElement();
-            assertTrue("bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
+            assertTrue(
+                    "bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
         }
         assertEquals(MESSAGES_DE.size(), counter);
     }
@@ -346,7 +350,7 @@ public class JcrResourceBundleTest {
         Node de = appsI18n.addNode("de_basename", "nt:unstructured");
         de.addMixin("mix:language");
         de.setProperty("jcr:language", "de");
-        de.setProperty("sling:basename", new String[]{"FOO", "BAR"});
+        de.setProperty("sling:basename", new String[] {"FOO", "BAR"});
         for (Message msg : MESSAGES_DE_BASENAME.values()) {
             msg.add(de);
         }
@@ -357,7 +361,7 @@ public class JcrResourceBundleTest {
         for (Message msg : MESSAGES_DE_BASENAME.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
-        
+
         // test getString
         bundle = new JcrResourceBundle(new Locale("de"), "BAR", resolver, null, new PathFilter());
         for (Message msg : MESSAGES_DE_BASENAME.values()) {
@@ -370,7 +374,9 @@ public class JcrResourceBundleTest {
         while (keys.hasMoreElements()) {
             counter++;
             String key = keys.nextElement();
-            assertTrue("bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_BASENAME.containsKey(key));
+            assertTrue(
+                    "bundle returned key that is not supposed to be there: " + key,
+                    MESSAGES_DE_BASENAME.containsKey(key));
         }
         assertEquals(MESSAGES_DE.size(), counter);
     }
@@ -410,9 +416,9 @@ public class JcrResourceBundleTest {
         while (keys.hasMoreElements()) {
             counter++;
             String key = keys.nextElement();
-            assertTrue("bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
+            assertTrue(
+                    "bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
         }
         assertEquals(MESSAGES_DE.size(), counter);
     }
-
 }

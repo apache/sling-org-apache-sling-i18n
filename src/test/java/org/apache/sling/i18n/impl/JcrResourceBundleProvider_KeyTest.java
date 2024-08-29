@@ -32,8 +32,8 @@ public class JcrResourceBundleProvider_KeyTest extends TestCase {
         super.setUp();
 
         try {
-            Class<?> clazz = getClass().getClassLoader().loadClass(
-                "org.apache.sling.i18n.impl.JcrResourceBundleProvider$Key");
+            Class<?> clazz =
+                    getClass().getClassLoader().loadClass("org.apache.sling.i18n.impl.JcrResourceBundleProvider$Key");
             this.ctor = clazz.getDeclaredConstructor(String.class, Locale.class);
         } catch (Throwable t) {
             fail("Cannot get JcrResourceBundleProvider.Key constructor: " + t);
@@ -80,7 +80,6 @@ public class JcrResourceBundleProvider_KeyTest extends TestCase {
         assertFalse(key2.equals("string"));
     }
 
-
     public void test_key_String_null() {
         final Object key1 = createKey("base", null);
         assertNotNull(key1);
@@ -106,7 +105,6 @@ public class JcrResourceBundleProvider_KeyTest extends TestCase {
         assertFalse(key1.equals(createKey(null, new Locale("de"))));
         assertFalse(key1.equals(createKey(null, null)));
     }
-
 
     public void test_key_String_Locale() {
         final Object key1 = createKey("base", new Locale("de"));

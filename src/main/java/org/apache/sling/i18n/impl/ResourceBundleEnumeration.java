@@ -30,15 +30,15 @@ public class ResourceBundleEnumeration implements Enumeration<String> {
 
     private Iterator<String> keysIterator;
     private String next;
-    
+
     public ResourceBundleEnumeration(Set<String> keys, Enumeration<String> parentKeys) {
         this.keys = keys;
         this.parentKeys = parentKeys;
         this.keysIterator = keys.iterator();
-        
+
         next = seek();
     }
-    
+
     public boolean hasMoreElements() {
         return next != null;
     }
@@ -47,7 +47,7 @@ public class ResourceBundleEnumeration implements Enumeration<String> {
         if (!hasMoreElements()) {
             throw new NoSuchElementException();
         }
-        
+
         String result = next;
         next = seek();
         return result;
@@ -55,15 +55,15 @@ public class ResourceBundleEnumeration implements Enumeration<String> {
 
     private String seek() {
         if (keysIterator != null) {
-            
+
             if (keysIterator.hasNext()) {
                 return keysIterator.next();
             }
-            
+
             // my keys are exhausted, set iterator to null
             keysIterator = null;
         }
-        
+
         if (parentKeys != null) {
             while (parentKeys.hasMoreElements()) {
                 String parentKey = parentKeys.nextElement();
@@ -71,11 +71,11 @@ public class ResourceBundleEnumeration implements Enumeration<String> {
                     return parentKey;
                 }
             }
-            
+
             // no more parent keys, set enumeration to null
             parentKeys = null;
         }
-        
+
         // parentKeys are also exhausted, nothing more to return
         return null;
     }
