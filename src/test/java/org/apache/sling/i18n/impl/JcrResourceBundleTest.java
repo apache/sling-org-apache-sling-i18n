@@ -108,6 +108,7 @@ public class JcrResourceBundleTest {
     public static final Map<String, Message> MESSAGES_EN = new LinkedHashMap<String, Message>();
     public static final Map<String, Message> MESSAGES_EN_DASH_US = new LinkedHashMap<String, Message>();
     public static final Map<String, Message> MESSAGES_EN_UNDERSCORE_UK = new LinkedHashMap<String, Message>();
+    public static final Map<String, Message> MESSAGES_ZH_UNDERSCORE_HANS_UNDERSCORE_CN = new LinkedHashMap<String, Message>();
     public static final Map<String, Message> MESSAGES_EN_UNDERSCORE_AU = new LinkedHashMap<String, Message>();
     public static final Map<String, Message> MESSAGES_DE_APPS = new LinkedHashMap<String, Message>();
     public static final Map<String, Message> MESSAGES_DE_BASENAME = new LinkedHashMap<String, Message>();
@@ -135,6 +136,8 @@ public class JcrResourceBundleTest {
         add(MESSAGES_EN_DASH_US, new Message("", "pigment", "color", false));
         add(MESSAGES_EN_UNDERSCORE_UK, new Message("", "pigment", "colour", false));
         add(MESSAGES_EN_UNDERSCORE_AU, new Message("", "pigment", "colour", false));
+    
+        add(MESSAGES_ZH_UNDERSCORE_HANS_UNDERSCORE_CN, new Message("", "pigment", "颜料", false));
 
         // 6. same as 1.-4., but different translations for overwriting into apps
         for (Message msg : MESSAGES_DE.values()) {
@@ -195,6 +198,14 @@ public class JcrResourceBundleTest {
             msg.add(enUnderscoreAU);
         }
         getSession().save();
+        
+        // some zh_hans_cn content
+        Node zhUnderscoreHansUnderscoreCN = i18n.addNode("zh_hans_cn", "nt:folder");
+        zhUnderscoreHansUnderscoreCN.addMixin("mix:language");
+        zhUnderscoreHansUnderscoreCN.setProperty("jcr:language", "zh_hans_cn");
+        for (Message msg : MESSAGES_ZH_UNDERSCORE_HANS_UNDERSCORE_CN.values()) {
+            msg.add(zhUnderscoreHansUnderscoreCN);
+        }
     }
 
     // ---------------------------------------------------------------< tests >
@@ -218,6 +229,12 @@ public class JcrResourceBundleTest {
 
         bundle = new JcrResourceBundle(new Locale("en", "au"), null, resolver, null, new PathFilter());
         for (Message msg : MESSAGES_EN_UNDERSCORE_AU.values()) {
+            assertEquals(msg.message, bundle.getString(msg.key));
+        }
+        
+        bundle = new JcrResourceBundle(new Locale.Builder().setLanguage(Locale.CHINA.getLanguage()).
+            setRegion(Locale.CHINA.getCountry()).setScript("hans").build(), null, resolver, null, new PathFilter());
+        for (Message msg : MESSAGES_ZH_UNDERSCORE_HANS_UNDERSCORE_CN.values()) {
             assertEquals(msg.message, bundle.getString(msg.key));
         }
     }

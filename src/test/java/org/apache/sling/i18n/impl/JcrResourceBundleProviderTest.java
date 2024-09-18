@@ -63,9 +63,19 @@ public class JcrResourceBundleProviderTest {
                 JcrResourceBundleProvider.toLocale("en_GB_variant1"));
 
         // parts after the variant are just ignored
-        Assert.assertEquals(
-                new Locale(Locale.UK.getLanguage(), Locale.UK.getCountry(), "variant1"),
-                JcrResourceBundleProvider.toLocale("en_GB_variant1_something"));
+        Assert.assertEquals(new Locale(Locale.UK.getLanguage(), Locale.UK.getCountry(), "variant1"), JcrResourceBundleProvider.toLocale("en_GB_variant1_something"));
+        
+        // language, script, country and variant being set
+        Assert.assertEquals(new Locale.Builder().setLanguage(Locale.CHINA.getLanguage()).
+            setRegion(Locale.CHINA.getCountry()).setScript("hans").setVariant("variant1").build(), JcrResourceBundleProvider.toLocale("zh_hans_cn_variant1"));
+    
+        // parts after the variant are just ignored
+        Assert.assertEquals(new Locale.Builder().setLanguage(Locale.CHINA.getLanguage()).
+            setRegion(Locale.CHINA.getCountry()).setScript("hans").setVariant("variant1").build(), JcrResourceBundleProvider.toLocale("zh_hans_cn_variant1_variant2"));
+    
+        // language, script and country being set
+        Assert.assertEquals(new Locale.Builder().setLanguage(Locale.CHINA.getLanguage()).
+            setRegion(Locale.CHINA.getCountry()).setScript("hans").build(), JcrResourceBundleProvider.toLocale("zh_hans_cn"));
     }
 
     @Test
@@ -86,9 +96,19 @@ public class JcrResourceBundleProviderTest {
                 JcrResourceBundleProvider.toLocale("en-GB-variant1"));
 
         // parts after the variant are just ignored
-        Assert.assertEquals(
-                new Locale(Locale.UK.getLanguage(), Locale.UK.getCountry(), "variant1"),
-                JcrResourceBundleProvider.toLocale("en-GB-variant1-something-else"));
+        Assert.assertEquals(new Locale(Locale.UK.getLanguage(), Locale.UK.getCountry(), "variant1"), JcrResourceBundleProvider.toLocale("en-GB-variant1-something-else"));
+        
+        // language, script, country and variant being set
+        Assert.assertEquals(new Locale.Builder().setLanguage(Locale.CHINA.getLanguage()).
+            setRegion(Locale.CHINA.getCountry()).setScript("hans").setVariant("variant1").build(), JcrResourceBundleProvider.toLocale("zh-hans-cn-variant1"));
+    
+        // parts after the variant are just ignored
+        Assert.assertEquals(new Locale.Builder().setLanguage(Locale.CHINA.getLanguage()).
+            setRegion(Locale.CHINA.getCountry()).setScript("hans").setVariant("variant1").build(), JcrResourceBundleProvider.toLocale("zh-hans-cn-variant1-variant2"));
+    
+        // language, script and country being set
+        Assert.assertEquals(new Locale.Builder().setLanguage(Locale.CHINA.getLanguage()).
+            setRegion(Locale.CHINA.getCountry()).setScript("hans").build(), JcrResourceBundleProvider.toLocale("zh-hans-cn"));
     }
 
     @Test

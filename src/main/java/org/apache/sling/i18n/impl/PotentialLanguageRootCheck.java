@@ -36,7 +36,7 @@ class PotentialLanguageRootCheck {
 
     public PotentialLanguageRootCheck(String baseName, Locale locale) {
         this.baseName = baseName;
-        this.localeString = locale.toString();
+        this.localeString = localeToString(locale);
         this.localeStringLower = localeString.toLowerCase();
         this.localeRFC4646String = toRFC4646String(locale);
         this.localeRFC4646StringLower = localeRFC4646String.toLowerCase();
@@ -70,6 +70,24 @@ class PotentialLanguageRootCheck {
 
     // Would be nice if Locale.toString() output RFC 4646, but it doesn't
     private static String toRFC4646String(Locale locale) {
-        return locale.toString().replace('_', '-');
+        return localeToString(locale).replace('_', '-');
+    }
+    
+    private static String localeToString(Locale locale) {
+        boolean country = !locale.getCountry().isEmpty();
+        boolean variant = !locale.getVariant().isEmpty();
+        boolean script = !locale.getScript().isEmpty();
+    
+        StringBuilder result = new StringBuilder(locale.getLanguage());
+        if (script) {
+            result.append('_').append(locale.getScript());
+        }
+        if (country) {
+           result.append('_').append(locale.getCountry());
+        }
+        if (variant) {
+            result.append('_').append(locale.getVariant());
+        }
+        return result.toString();
     }
 }

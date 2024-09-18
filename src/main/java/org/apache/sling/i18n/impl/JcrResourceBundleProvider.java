@@ -554,6 +554,12 @@ public class JcrResourceBundleProvider
      * Returns the parent locale of the given locale. The parent locale is the
      * locale of a locale is defined as follows:
      * <ol>
+     * <li>If locale has script and variant, the parent locale is the locale with
+     * the same language , script and country without the variant </li>
+     * <li>If the locale has a script but no variant, the parent locale is the
+     * locale with the same language and script without the country.</li>
+     * <li>If the locale has a script but no country , the parent locale is the
+     * locale with the same language without the script.</li>
      * <li>If the locale has an variant, the parent locale is the locale with
      * the same language and country without the variant.</li>
      * <li>If the locale has no variant but a country, the parent locale is the
@@ -651,6 +657,8 @@ public class JcrResourceBundleProvider
      * languages and countries provided by the platform. Any unsupported
      * language or country is replaced by the platform default language and
      * country.
+     * Locale string is also parsed for script tag. Alpha String Validation is done to check if the script tag is valid.
+     * No default script is set if the script tag is invalid.
      * @param localeString the locale as string
      * @return the {@link Locale} being generated from the {@code localeString}
      */
@@ -690,26 +698,25 @@ public class JcrResourceBundleProvider
         String script = "";
         String country = "";
         String variant = "";
-    
-        boolean isValidScriptCode = false;
+        
         boolean isValidCountryCode = false;
     
         if (parts.length == 2) {
-            if (parts[1].length() == 4) { // Assume it's a script code (4 letters)
+            if (parts[1].length() == 4 && isValidScriptCode(parts[1])) {
                 script = parts[1];
             } else {
                 country = parts[1];
             }
         } else if (parts.length == 3) {
-            if (parts[1].length() == 4) { // Script and country
+            if (parts[1].length() == 4 && isValidScriptCode(parts[1])) { // Script and country
                 script = parts[1];
                 country = parts[2];
             } else { // Country and variant
                 country = parts[1];
                 variant = parts[2];
             }
-        } else if (parts.length == 4) {
-            if (parts[1].length() == 4) { // Script and country
+        } else if (parts.length >= 4) {
+            if (parts[1].length() == 4 && isValidScriptCode(parts[1])) { // Script and country
                 script = parts[1];
                 country = parts[2];
                 variant = parts[3];
@@ -717,14 +724,7 @@ public class JcrResourceBundleProvider
                 country = parts[1];
                 variant = parts[2];
             }
-        } else {
-            country = parts[1];
-            variant = parts[2];
         }
-        
-        // validate script and country
-    
-        isValidScriptCode = isAlphaString(script);
     
         // allow user-assigned codes (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#User-assigned_code_elements)
         if (USER_ASSIGNED_COUNTRY_CODES_PATTERN.matcher(country.toLowerCase()).matches()) {
@@ -737,10 +737,6 @@ public class JcrResourceBundleProvider
                     break;
                 }
             }
-        }
-    
-        if (!isValidScriptCode) {
-            script = ""; // Reset to empty if invalid
         }
         
         if (!isValidCountryCode && !country.isEmpty()) {
@@ -755,20 +751,28 @@ public class JcrResourceBundleProvider
         if (!country.isEmpty()) {
             builder.setRegion(country);
         }
-        if (!variant.isEmpty()) {
-            builder.setVariant(variant);
+        try {
+            if (!variant.isEmpty()) {
+                builder.setVariant(variant);
+            }
+        } catch (Exception e) {
+            if (!script.isEmpty()) {
+                return builder.build();
+            }
+            // fallback to previous implementation
+            return new Locale(lang, country, variant);
         }
         return builder.build();
     }
     
-    static boolean isAlpha(char c) {
+    private static boolean isAlphaString(char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
     }
     
-    static boolean isAlphaString(String s) {
+    private static boolean isValidScriptCode(String s) {
         int len = s.length();
         for (int i = 0; i < len; i++) {
-            if (!isAlpha(s.charAt(i))) {
+            if (!isAlphaString(s.charAt(i))) {
                 return false;
             }
         }
