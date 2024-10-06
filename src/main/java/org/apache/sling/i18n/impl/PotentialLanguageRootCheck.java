@@ -68,22 +68,21 @@ class PotentialLanguageRootCheck {
         return match;
     }
 
-    // Would be nice if Locale.toString() output RFC 4646, but it doesn't
     private static String toRFC4646String(Locale locale) {
         return localeToString(locale).replace('_', '-');
     }
-    
+
     private static String localeToString(Locale locale) {
         boolean country = !locale.getCountry().isEmpty();
         boolean variant = !locale.getVariant().isEmpty();
         boolean script = !locale.getScript().isEmpty();
-    
+
         StringBuilder result = new StringBuilder(locale.getLanguage());
         if (script) {
             result.append('_').append(locale.getScript());
         }
         if (country) {
-           result.append('_').append(locale.getCountry());
+            result.append('_').append(locale.getCountry());
         }
         if (variant) {
             result.append('_').append(locale.getVariant());

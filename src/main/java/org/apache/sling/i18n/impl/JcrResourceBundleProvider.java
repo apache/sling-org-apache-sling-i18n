@@ -25,6 +25,7 @@ import java.util.Date;
 import java.util.Dictionary;
 import java.util.HashSet;
 import java.util.Hashtable;
+import java.util.IllformedLocaleException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -573,10 +574,27 @@ public class JcrResourceBundleProvider
      */
     private Locale getParentLocale(Locale locale) {
         if (locale.getScript().length() != 0 && locale.getVariant().length() != 0) {
-            return new Locale.Builder().setLanguage(locale.getLanguage()).setRegion(locale.getCountry()).setScript(locale.getScript()).build();
+            try {
+                return new Locale.Builder()
+                        .setLanguage(locale.getLanguage())
+                        .setRegion(locale.getCountry())
+                        .setScript(locale.getScript())
+                        .build();
+            } catch (IllformedLocaleException e) {
+                // fallback to previous implementation
+                return new Locale(locale.getLanguage(), locale.getCountry());
+            }
         } else if (locale.getScript().length() != 0 && locale.getCountry().length() != 0) {
-            return new Locale.Builder().setLanguage(locale.getLanguage()).setScript(locale.getScript()).build();
-        } else if (locale.getScript().length() !=0) {
+            try {
+                return new Locale.Builder()
+                        .setLanguage(locale.getLanguage())
+                        .setScript(locale.getScript())
+                        .build();
+            } catch (IllformedLocaleException e) {
+                // fallback to previous implementation
+                return new Locale(locale.getLanguage());
+            }
+        } else if (locale.getScript().length() != 0) {
             return new Locale(locale.getLanguage());
         } else if (locale.getVariant().length() != 0) {
             return new Locale(locale.getLanguage(), locale.getCountry());
@@ -657,8 +675,7 @@ public class JcrResourceBundleProvider
      * languages and countries provided by the platform. Any unsupported
      * language or country is replaced by the platform default language and
      * country.
-     * Locale string is also parsed for script tag. Alpha String Validation is done to check if the script tag is valid.
-     * No default script is set if the script tag is invalid.
+     * Locale string is also parsed for script tag. Any unsupported script is ignored.
      * @param localeString the locale as string
      * @return the {@link Locale} being generated from the {@code localeString}
      */
@@ -693,22 +710,22 @@ public class JcrResourceBundleProvider
         if (parts.length == 1) {
             return new Locale(lang);
         }
-    
+
         // Initialize variables for script, country, and variant
         String script = "";
         String country = "";
         String variant = "";
-        
+
         boolean isValidCountryCode = false;
-    
+
         if (parts.length == 2) {
-            if (parts[1].length() == 4 && isValidScriptCode(parts[1])) {
+            if (isScript(parts[1])) {
                 script = parts[1];
             } else {
                 country = parts[1];
             }
         } else if (parts.length == 3) {
-            if (parts[1].length() == 4 && isValidScriptCode(parts[1])) { // Script and country
+            if (isScript(parts[1])) { // Script and country
                 script = parts[1];
                 country = parts[2];
             } else { // Country and variant
@@ -716,7 +733,7 @@ public class JcrResourceBundleProvider
                 variant = parts[2];
             }
         } else if (parts.length >= 4) {
-            if (parts[1].length() == 4 && isValidScriptCode(parts[1])) { // Script and country
+            if (isScript(parts[1])) { // Script and country
                 script = parts[1];
                 country = parts[2];
                 variant = parts[3];
@@ -725,58 +742,79 @@ public class JcrResourceBundleProvider
                 variant = parts[2];
             }
         }
-    
-        // allow user-assigned codes (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#User-assigned_code_elements)
-        if (USER_ASSIGNED_COUNTRY_CODES_PATTERN.matcher(country.toLowerCase()).matches()) {
-            isValidCountryCode = true;
-        } else {
-            String[] countries = Locale.getISOCountries();
-            for (int i = 0; i < countries.length; i++) {
-                if (countries[i].equalsIgnoreCase(country)) {
-                    isValidCountryCode = true; // signal ok
-                    break;
+
+        if (!country.isEmpty()) {
+            // allow user-assigned codes (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#User-assigned_code_elements)
+            if (USER_ASSIGNED_COUNTRY_CODES_PATTERN
+                    .matcher(country.toLowerCase())
+                    .matches()) {
+                isValidCountryCode = true;
+            } else {
+                String[] countries = Locale.getISOCountries();
+                for (int i = 0; i < countries.length; i++) {
+                    if (countries[i].equalsIgnoreCase(country)) {
+                        isValidCountryCode = true; // signal ok
+                        break;
+                    }
                 }
             }
+
+            if (!isValidCountryCode) {
+                country = Locale.getDefault().getCountry();
+            }
         }
-        
-        if (!isValidCountryCode && !country.isEmpty()) {
-            country = Locale.getDefault().getCountry();
-        }
-    
+
         // Return Locale based on available components
         Locale.Builder builder = new Locale.Builder().setLanguage(lang);
-        if (!script.isEmpty()) {
-            builder.setScript(script);
-        }
+
         if (!country.isEmpty()) {
             builder.setRegion(country);
+        }
+
+        if (!script.isEmpty()) {
+            try {
+                builder.setScript(script);
+            } catch (IllformedLocaleException e) {
+                if (parts.length == 2) {
+                    // fallback to previous implementation
+                    return new Locale(lang, country);
+                } else if (parts.length >= 3) {
+                    // fallback to previous implementation
+                    return new Locale(lang, country, parts[2]);
+                }
+            }
         }
         try {
             if (!variant.isEmpty()) {
                 builder.setVariant(variant);
             }
-        } catch (Exception e) {
+        } catch (IllformedLocaleException e) {
             if (!script.isEmpty()) {
                 return builder.build();
             }
             // fallback to previous implementation
-            return new Locale(lang, country, variant);
+            return new Locale(lang, country, parts[2]);
         }
         return builder.build();
     }
-    
-    private static boolean isAlphaString(char c) {
+
+    private static boolean isAlpha(char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
     }
-    
-    private static boolean isValidScriptCode(String s) {
+
+    private static boolean isAlphaString(String s) {
         int len = s.length();
         for (int i = 0; i < len; i++) {
-            if (!isAlphaString(s.charAt(i))) {
+            if (!isAlpha(s.charAt(i))) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static boolean isScript(String s) {
+        // script        = 4ALPHA              ; ISO 15924 code
+        return (s.length() == 4) && isAlphaString(s);
     }
 
     // ---------- internal class
