@@ -683,9 +683,9 @@ public class JcrResourceBundleProvider
         if (localeString == null || localeString.length() == 0) {
             return Locale.getDefault();
         }
+
         // support BCP 47 compliant strings as well (using a different separator "-" instead of "_")
         localeString = localeString.replaceAll("-", "_");
-
         // check language and country
         final String[] parts = localeString.split("_");
         if (parts.length == 0) {
@@ -693,109 +693,79 @@ public class JcrResourceBundleProvider
         }
 
         // at least language is available
-        String lang = parts[0];
-        boolean isValidLanguageCode = false;
-        String[] langs = Locale.getISOLanguages();
-        for (int i = 0; i < langs.length; i++) {
-            if (langs[i].equalsIgnoreCase(lang)) {
-                isValidLanguageCode = true;
-                break;
-            }
-        }
-        if (!isValidLanguageCode) {
-            lang = Locale.getDefault().getLanguage();
-        }
+        String lang = getValidLanguage(parts[0]);
 
         // only language
         if (parts.length == 1) {
             return new Locale(lang);
         }
 
-        // Initialize variables for script, country, and variant
-        String script = "";
-        String country = "";
-        String variant = "";
+        Locale.Builder localeBuilder = new Locale.Builder().setLanguage(lang);
 
-        boolean isValidCountryCode = false;
-
-        if (parts.length == 2) {
-            if (isScript(parts[1])) {
-                script = parts[1];
-            } else {
-                country = parts[1];
-            }
-        } else if (parts.length == 3) {
-            if (isScript(parts[1])) { // Script and country
-                script = parts[1];
-                country = parts[2];
-            } else { // Country and variant
-                country = parts[1];
-                variant = parts[2];
-            }
-        } else if (parts.length >= 4) {
-            if (isScript(parts[1])) { // Script and country
-                script = parts[1];
-                country = parts[2];
-                variant = parts[3];
-            } else {
-                country = parts[1];
-                variant = parts[2];
-            }
-        }
-
-        if (!country.isEmpty()) {
-            // allow user-assigned codes (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#User-assigned_code_elements)
-            if (USER_ASSIGNED_COUNTRY_CODES_PATTERN
-                    .matcher(country.toLowerCase())
-                    .matches()) {
-                isValidCountryCode = true;
-            } else {
-                String[] countries = Locale.getISOCountries();
-                for (int i = 0; i < countries.length; i++) {
-                    if (countries[i].equalsIgnoreCase(country)) {
-                        isValidCountryCode = true; // signal ok
-                        break;
+        if (parts.length > 1) {
+            try {
+                if (isScript(parts[1])) {
+                    localeBuilder.setScript(parts[1]);
+                    if (parts.length > 2) {
+                        String country = getValidCountry(parts[2]);
+                        localeBuilder.setRegion(country);
+                        if (parts.length > 3) {
+                            try {
+                                localeBuilder.setVariant(parts[3]);
+                            } catch (IllformedLocaleException e) {
+                                // fallback to script in case of invalid variant.
+                            }
+                        }
+                    }
+                } else {
+                    String country = getValidCountry(parts[1]);
+                    localeBuilder.setRegion(country);
+                    if (parts.length > 2) {
+                        localeBuilder.setVariant(parts[2]);
                     }
                 }
-            }
-
-            if (!isValidCountryCode) {
-                country = Locale.getDefault().getCountry();
-            }
-        }
-
-        // Return Locale based on available components
-        Locale.Builder builder = new Locale.Builder().setLanguage(lang);
-
-        if (!country.isEmpty()) {
-            builder.setRegion(country);
-        }
-
-        if (!script.isEmpty()) {
-            try {
-                builder.setScript(script);
             } catch (IllformedLocaleException e) {
-                if (parts.length == 2) {
-                    // fallback to previous implementation
-                    return new Locale(lang, country);
-                } else if (parts.length >= 3) {
-                    // fallback to previous implementation
-                    return new Locale(lang, country, parts[2]);
+                return handleIllformedLocale(lang, parts);
+            }
+        }
+
+        return localeBuilder.build();
+    }
+
+    private static String getValidLanguage(String lang) {
+        for (String validLang : Locale.getISOLanguages()) {
+            if (validLang.equalsIgnoreCase(lang)) {
+                return lang;
+            }
+        }
+        return Locale.getDefault().getLanguage();
+    }
+
+    private static String getValidCountry(String country) {
+        return isValidCountryCode(country) ? country : Locale.getDefault().getCountry();
+    }
+
+    private static Locale handleIllformedLocale(String lang, String[] parts) {
+        String country = parts.length > 1 ? getValidCountry(parts[1]) : "";
+        String variant = parts.length > 2 ? parts[2] : "";
+        return new Locale(lang, country, variant);
+    }
+
+    private static boolean isValidCountryCode(String country) {
+        boolean isValidCountryCode = false;
+        // allow user-assigned codes (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#User-assigned_code_elements)
+        if (USER_ASSIGNED_COUNTRY_CODES_PATTERN.matcher(country.toLowerCase()).matches()) {
+            isValidCountryCode = true;
+        } else {
+            String[] countries = Locale.getISOCountries();
+            for (int i = 0; i < countries.length; i++) {
+                if (countries[i].equalsIgnoreCase(country)) {
+                    isValidCountryCode = true; // signal ok
+                    break;
                 }
             }
         }
-        try {
-            if (!variant.isEmpty()) {
-                builder.setVariant(variant);
-            }
-        } catch (IllformedLocaleException e) {
-            if (!script.isEmpty()) {
-                return builder.build();
-            }
-            // fallback to previous implementation
-            return new Locale(lang, country, parts[2]);
-        }
-        return builder.build();
+        return isValidCountryCode;
     }
 
     private static boolean isAlpha(char c) {
