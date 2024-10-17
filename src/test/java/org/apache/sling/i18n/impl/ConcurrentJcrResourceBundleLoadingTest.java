@@ -234,6 +234,19 @@ public class ConcurrentJcrResourceBundleLoadingTest {
      */
     @Test
     public void clearCacheInterleavedWithRegistersClearsAllRBs() throws Exception {
+        final String SCRIPT_TAG = "hans";
+        final String VARIANT = "variant";
+        final Locale CHINESE_SCRIPT_LOCALE = new Locale.Builder()
+                .setLanguage(Locale.CHINA.getLanguage())
+                .setScript(SCRIPT_TAG)
+                .build();
+        final Locale CHINESE_SCRIPT_VARIANT_LOCALE = new Locale.Builder()
+                .setLanguage(Locale.CHINA.getLanguage())
+                .setRegion(Locale.CHINA.getCountry())
+                .setScript(SCRIPT_TAG)
+                .setVariant(VARIANT)
+                .build();
+
         Map<Locale, List<ResourceBundle>> rbLists = new ConcurrentHashMap<>();
         final Locale[] testLocales = {
             Locale.ENGLISH,
@@ -244,7 +257,9 @@ public class ConcurrentJcrResourceBundleLoadingTest {
             Locale.KOREAN,
             Locale.CHINESE,
             Locale.SIMPLIFIED_CHINESE,
-            Locale.TRADITIONAL_CHINESE
+            Locale.TRADITIONAL_CHINESE,
+            CHINESE_SCRIPT_LOCALE,
+            CHINESE_SCRIPT_VARIANT_LOCALE
         };
 
         final int numberOfThreads = 100;

@@ -67,6 +67,14 @@ public class JcrResourceBundleProviderTest {
                 new Locale(Locale.UK.getLanguage(), Locale.UK.getCountry(), "variant1"),
                 JcrResourceBundleProvider.toLocale("en_GB_variant1_something"));
 
+        // language and script being set
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setScript("hans")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh_hans"));
+
         // language, script, country and variant being set
         Assert.assertEquals(
                 new Locale.Builder()
