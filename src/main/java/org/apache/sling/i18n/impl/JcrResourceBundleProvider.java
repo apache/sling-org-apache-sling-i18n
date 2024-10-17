@@ -694,63 +694,53 @@ public class JcrResourceBundleProvider
 
         // at least language is available
         String lang = getValidLanguage(parts[0]);
+        if (parts.length == 1) {
+            return new Locale(lang);
+        }
 
-        Locale.Builder localeBuilder = new Locale.Builder().setLanguage(lang);
+        Locale localeWithBuilder = createLocaleWithBuilder(parts, lang);
+        if (localeWithBuilder != null) {
+            return localeWithBuilder;
+        }
 
-        switch (parts.length) {
-            case 1:
-                return new Locale(lang);
-            case 2:
-                try {
-                    if (isScript(parts[1])) {
-                        localeBuilder.setScript(parts[1]);
-                        return localeBuilder.build();
-                    } else {
-                        // return to previous implementation in case of invalid script.
-                        return fallbackToLocale(lang, parts);
-                    }
-                } catch (IllformedLocaleException e) {
-                    // return to previous implementation in case of invalid script.
-                    return fallbackToLocale(lang, parts);
+        return createLocaleWithConstructor(lang, parts);
+    }
+
+    private static Locale createLocaleWithBuilder(String[] parts, String lang) {
+        if (isScript(parts[1])) {
+            try {
+                switch (parts.length) {
+                    case 2:
+                        return new Locale.Builder()
+                                .setLanguage(lang)
+                                .setScript(parts[1])
+                                .build();
+                    case 3:
+                        return new Locale.Builder()
+                                .setLanguage(lang)
+                                .setScript(parts[1])
+                                .setRegion(getValidCountry(parts[2]))
+                                .build();
+                    default: // case >= 4
+                        return processMultipleParts(parts, lang);
                 }
+            } catch (IllformedLocaleException e) {
+                LoggerFactory.getLogger(JcrResourceBundleProvider.class)
+                        .warn("Failed to create locale with LocaleBuilder", e);
+            }
+        }
+        return null;
+    }
 
-            case 3:
-                try {
-                    if (isScript(parts[1])) {
-                        localeBuilder.setScript(parts[1]);
-                        String country = getValidCountry(parts[2]);
-                        localeBuilder.setRegion(country);
-                        return localeBuilder.build();
-                    } else {
-                        // return to previous implementation in case of invalid script.
-                        return fallbackToLocale(lang, parts);
-                    }
-                } catch (IllformedLocaleException e) {
-                    // return to previous implementation in case of invalid script.
-                    return fallbackToLocale(lang, parts);
-                }
-
-            default: // case >= 4
-                try {
-                    if (isScript(parts[1])) {
-                        localeBuilder.setScript(parts[1]);
-                        String country = getValidCountry(parts[2]);
-                        localeBuilder.setRegion(country);
-                        try {
-                            localeBuilder.setVariant(parts[3]);
-                            return localeBuilder.build();
-                        } catch (IllformedLocaleException e) {
-                            // fallback to script in case of invalid variant.
-                            return localeBuilder.build();
-                        }
-                    } else {
-                        // return to previous implementation in case of invalid script.
-                        return fallbackToLocale(lang, parts);
-                    }
-                } catch (IllformedLocaleException e) {
-                    // return to previous implementation in case of invalid script.
-                    return fallbackToLocale(lang, parts);
-                }
+    private static Locale processMultipleParts(String[] parts, String lang) {
+        Locale.Builder localeBuilder =
+                new Locale.Builder().setLanguage(lang).setScript(parts[1]).setRegion(getValidCountry(parts[2]));
+        try {
+            localeBuilder.setVariant(parts[3]);
+            return localeBuilder.build();
+        } catch (IllformedLocaleException e) {
+            // creating locale with language, script and country
+            return localeBuilder.build();
         }
     }
 
@@ -767,7 +757,7 @@ public class JcrResourceBundleProvider
         return isValidCountryCode(country) ? country : Locale.getDefault().getCountry();
     }
 
-    private static Locale fallbackToLocale(String lang, String[] parts) {
+    private static Locale createLocaleWithConstructor(String lang, String[] parts) {
         String country = parts.length > 1 ? getValidCountry(parts[1]) : "";
         String variant = parts.length > 2 ? parts[2] : "";
         return new Locale(lang, country, variant);
