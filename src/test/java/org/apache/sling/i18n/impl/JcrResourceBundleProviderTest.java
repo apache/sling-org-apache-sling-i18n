@@ -235,5 +235,8 @@ public class JcrResourceBundleProviderTest {
         // Locale with language only
         locale = new Locale(Locale.CHINA.getLanguage());
         Assert.assertEquals(provider.getDefaultLocale(), provider.getParentLocale(locale));
+
+        // The parent of the default locale is null
+        Assert.assertNull(provider.getParentLocale(provider.getDefaultLocale()));
     }
 }

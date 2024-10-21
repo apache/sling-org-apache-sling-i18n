@@ -604,7 +604,7 @@ public class JcrResourceBundleProvider
         } else if (!locale.getLanguage().equals(defaultLocale.getLanguage())) {
             return defaultLocale;
         }
-        // no more parents
+        // the default locale has no parent locale
         return null;
     }
 
