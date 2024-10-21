@@ -19,6 +19,7 @@
 package org.apache.sling.i18n.impl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -572,8 +573,8 @@ public class JcrResourceBundleProvider
      * returned.</li>
      * </ol>
      */
-    private Locale getParentLocale(Locale locale) {
-        if (locale.getScript().length() != 0 && locale.getVariant().length() != 0) {
+    protected Locale getParentLocale(Locale locale) {
+        if (!locale.getScript().isEmpty() && !locale.getVariant().isEmpty()) {
             try {
                 return new Locale.Builder()
                         .setLanguage(locale.getLanguage())
@@ -581,24 +582,24 @@ public class JcrResourceBundleProvider
                         .setScript(locale.getScript())
                         .build();
             } catch (IllformedLocaleException e) {
-                // fallback to previous implementation
+                // should never happen, as all elements already come from a valid locale object
                 return new Locale(locale.getLanguage(), locale.getCountry());
             }
-        } else if (locale.getScript().length() != 0 && locale.getCountry().length() != 0) {
+        } else if (!locale.getScript().isEmpty() && !locale.getCountry().isEmpty()) {
             try {
                 return new Locale.Builder()
                         .setLanguage(locale.getLanguage())
                         .setScript(locale.getScript())
                         .build();
             } catch (IllformedLocaleException e) {
-                // fallback to previous implementation
+                // should never happen, as all elements already come from a valid locale object
                 return new Locale(locale.getLanguage());
             }
-        } else if (locale.getScript().length() != 0) {
+        } else if (!locale.getScript().isEmpty()) {
             return new Locale(locale.getLanguage());
-        } else if (locale.getVariant().length() != 0) {
+        } else if (!locale.getVariant().isEmpty()) {
             return new Locale(locale.getLanguage(), locale.getCountry());
-        } else if (locale.getCountry().length() != 0) {
+        } else if (!locale.getCountry().isEmpty()) {
             return new Locale(locale.getLanguage());
         } else if (!locale.getLanguage().equals(defaultLocale.getLanguage())) {
             return defaultLocale;
@@ -706,42 +707,62 @@ public class JcrResourceBundleProvider
         return createLocaleWithConstructor(lang, parts);
     }
 
+    /**
+     * Create locale with Locale.Builder
+     * @param parts parts of Locale string
+     * @param lang language part of Locale string
+     * @return Locale created with Locale.Builder or null if it fails or when parts length is less than 2
+     */
     private static Locale createLocaleWithBuilder(String[] parts, String lang) {
-        if (isScript(parts[1])) {
-            try {
-                switch (parts.length) {
-                    case 2:
-                        return new Locale.Builder()
-                                .setLanguage(lang)
-                                .setScript(parts[1])
-                                .build();
-                    case 3:
-                        return new Locale.Builder()
-                                .setLanguage(lang)
-                                .setScript(parts[1])
-                                .setRegion(getValidCountry(parts[2]))
-                                .build();
-                    default: // case >= 4
-                        return processMultipleParts(parts, lang);
+        if (parts.length >= 2) {
+            if (isScript(parts[1])) {
+                try {
+                    switch (parts.length) {
+                        case 2:
+                            return new Locale.Builder()
+                                    .setLanguage(lang)
+                                    .setScript(parts[1])
+                                    .build();
+                        case 3:
+                            return new Locale.Builder()
+                                    .setLanguage(lang)
+                                    .setScript(parts[1])
+                                    .setRegion(getValidCountry(parts[2]))
+                                    .build();
+                        default:
+                            return processMultipleParts(parts, lang);
+                    }
+                } catch (IllformedLocaleException e) {
+                    LoggerFactory.getLogger(JcrResourceBundleProvider.class)
+                            .warn(
+                                    "Failed to create locale with LocaleBuilder having parts: {}",
+                                    Arrays.toString(parts),
+                                    e);
                 }
-            } catch (IllformedLocaleException e) {
-                LoggerFactory.getLogger(JcrResourceBundleProvider.class)
-                        .warn("Failed to create locale with LocaleBuilder", e);
             }
         }
         return null;
     }
 
+    /**
+     * Process parts of Locale string when its length is greater than or equals 4
+     * @param parts parts of Locale string
+     * @param lang language part of Locale string
+     * @return Locale created with Locale.Builder or null when parts length is less than 4
+     */
     private static Locale processMultipleParts(String[] parts, String lang) {
-        Locale.Builder localeBuilder =
-                new Locale.Builder().setLanguage(lang).setScript(parts[1]).setRegion(getValidCountry(parts[2]));
-        try {
-            localeBuilder.setVariant(parts[3]);
-            return localeBuilder.build();
-        } catch (IllformedLocaleException e) {
-            // creating locale with language, script and country
-            return localeBuilder.build();
+        if (parts.length >= 4) {
+            Locale.Builder localeBuilder =
+                    new Locale.Builder().setLanguage(lang).setScript(parts[1]).setRegion(getValidCountry(parts[2]));
+            try {
+                localeBuilder.setVariant(parts[3]);
+                return localeBuilder.build();
+            } catch (IllformedLocaleException e) {
+                // creating locale with language, script and country
+                return localeBuilder.build();
+            }
         }
+        return null;
     }
 
     private static String getValidLanguage(String lang) {
