@@ -66,6 +66,47 @@ public class JcrResourceBundleProviderTest {
         Assert.assertEquals(
                 new Locale(Locale.UK.getLanguage(), Locale.UK.getCountry(), "variant1"),
                 JcrResourceBundleProvider.toLocale("en_GB_variant1_something"));
+
+        // language and script being set
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setScript("hans")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh_hans"));
+
+        // language, script, country and variant being set
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setRegion(Locale.CHINA.getCountry())
+                        .setScript("hans")
+                        .setVariant("variant1")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh_hans_cn_variant1"));
+
+        // parts after the variant are just ignored
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setRegion(Locale.CHINA.getCountry())
+                        .setScript("hans")
+                        .setVariant("variant1")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh_hans_cn_variant1_variant2"));
+
+        // language, script and country being set
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setRegion(Locale.CHINA.getCountry())
+                        .setScript("hans")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh_hans_cn"));
+
+        // for invalid country and invalid script, default country is assumed
+        Assert.assertEquals(
+                new Locale("en", Locale.getDefault().getCountry()), JcrResourceBundleProvider.toLocale("en_Han1"));
     }
 
     @Test
@@ -89,6 +130,35 @@ public class JcrResourceBundleProviderTest {
         Assert.assertEquals(
                 new Locale(Locale.UK.getLanguage(), Locale.UK.getCountry(), "variant1"),
                 JcrResourceBundleProvider.toLocale("en-GB-variant1-something-else"));
+
+        // language, script, country and variant being set
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setRegion(Locale.CHINA.getCountry())
+                        .setScript("hans")
+                        .setVariant("variant1")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh-hans-cn-variant1"));
+
+        // parts after the variant are just ignored
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setRegion(Locale.CHINA.getCountry())
+                        .setScript("hans")
+                        .setVariant("variant1")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh-hans-cn-variant1-variant2"));
+
+        // language, script and country being set
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setRegion(Locale.CHINA.getCountry())
+                        .setScript("hans")
+                        .build(),
+                JcrResourceBundleProvider.toLocale("zh-hans-cn"));
     }
 
     @Test
@@ -111,5 +181,62 @@ public class JcrResourceBundleProviderTest {
 
         // Lowercase Private use Country 'xa'
         Assert.assertEquals(new Locale(Locale.GERMAN.getLanguage(), "XA"), JcrResourceBundleProvider.toLocale("de_xa"));
+    }
+
+    @Test
+    public void testGetParentLocale() {
+        JcrResourceBundleProvider provider = new JcrResourceBundleProvider();
+        String variant = "variant1";
+        String script = "Hans";
+        // Locale with script and variant
+        Locale locale = new Locale.Builder()
+                .setLanguage(Locale.CHINA.getLanguage())
+                .setScript(script)
+                .setRegion(Locale.CHINA.getCountry())
+                .setVariant(variant)
+                .build();
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setScript(script)
+                        .setRegion(Locale.CHINA.getCountry())
+                        .build(),
+                provider.getParentLocale(locale));
+
+        // Locale with script and country
+        locale = new Locale.Builder()
+                .setLanguage(Locale.CHINA.getLanguage())
+                .setScript(script)
+                .setRegion(Locale.CHINA.getCountry())
+                .build();
+        Assert.assertEquals(
+                new Locale.Builder()
+                        .setLanguage(Locale.CHINA.getLanguage())
+                        .setScript(script)
+                        .build(),
+                provider.getParentLocale(locale));
+
+        // Locale with script only
+        locale = new Locale.Builder()
+                .setLanguage(Locale.CHINA.getLanguage())
+                .setScript(script)
+                .build();
+        Assert.assertEquals(new Locale(Locale.CHINA.getLanguage()), provider.getParentLocale(locale));
+
+        // Locale with variant only
+        locale = new Locale(Locale.CHINA.getLanguage(), Locale.CHINA.getCountry(), variant);
+        Assert.assertEquals(
+                new Locale(Locale.CHINA.getLanguage(), Locale.CHINA.getCountry()), provider.getParentLocale(locale));
+
+        // Locale with country only
+        locale = new Locale(Locale.CHINA.getLanguage(), Locale.CHINA.getCountry());
+        Assert.assertEquals(new Locale(Locale.CHINA.getLanguage()), provider.getParentLocale(locale));
+
+        // Locale with language only
+        locale = new Locale(Locale.CHINA.getLanguage());
+        Assert.assertEquals(provider.getDefaultLocale(), provider.getParentLocale(locale));
+
+        // The parent of the default locale is null
+        Assert.assertNull(provider.getParentLocale(provider.getDefaultLocale()));
     }
 }

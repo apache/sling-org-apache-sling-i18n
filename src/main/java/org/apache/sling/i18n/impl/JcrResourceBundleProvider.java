@@ -19,12 +19,14 @@
 package org.apache.sling.i18n.impl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Dictionary;
 import java.util.HashSet;
 import java.util.Hashtable;
+import java.util.IllformedLocaleException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -554,6 +556,12 @@ public class JcrResourceBundleProvider
      * Returns the parent locale of the given locale. The parent locale is the
      * locale of a locale is defined as follows:
      * <ol>
+     * <li>If locale has script and variant, the parent locale is the locale with
+     * the same language , script and country without the variant </li>
+     * <li>If the locale has a script but no variant, the parent locale is the
+     * locale with the same language and script without the country.</li>
+     * <li>If the locale has a script but no country , the parent locale is the
+     * locale with the same language without the script.</li>
      * <li>If the locale has an variant, the parent locale is the locale with
      * the same language and country without the variant.</li>
      * <li>If the locale has no variant but a country, the parent locale is the
@@ -565,16 +573,38 @@ public class JcrResourceBundleProvider
      * returned.</li>
      * </ol>
      */
-    private Locale getParentLocale(Locale locale) {
-        if (locale.getVariant().length() != 0) {
+    protected Locale getParentLocale(Locale locale) {
+        if (!locale.getScript().isEmpty() && !locale.getVariant().isEmpty()) {
+            try {
+                return new Locale.Builder()
+                        .setLanguage(locale.getLanguage())
+                        .setRegion(locale.getCountry())
+                        .setScript(locale.getScript())
+                        .build();
+            } catch (IllformedLocaleException e) {
+                // should never happen, as all elements already come from a valid locale object
+                return new Locale(locale.getLanguage(), locale.getCountry());
+            }
+        } else if (!locale.getScript().isEmpty() && !locale.getCountry().isEmpty()) {
+            try {
+                return new Locale.Builder()
+                        .setLanguage(locale.getLanguage())
+                        .setScript(locale.getScript())
+                        .build();
+            } catch (IllformedLocaleException e) {
+                // should never happen, as all elements already come from a valid locale object
+                return new Locale(locale.getLanguage());
+            }
+        } else if (!locale.getScript().isEmpty()) {
+            return new Locale(locale.getLanguage());
+        } else if (!locale.getVariant().isEmpty()) {
             return new Locale(locale.getLanguage(), locale.getCountry());
-        } else if (locale.getCountry().length() != 0) {
+        } else if (!locale.getCountry().isEmpty()) {
             return new Locale(locale.getLanguage());
         } else if (!locale.getLanguage().equals(defaultLocale.getLanguage())) {
             return defaultLocale;
         }
-
-        // no more parents
+        // the default locale has no parent locale
         return null;
     }
 
@@ -646,6 +676,7 @@ public class JcrResourceBundleProvider
      * languages and countries provided by the platform. Any unsupported
      * language or country is replaced by the platform default language and
      * country.
+     * Locale string is also parsed for script tag. Any unsupported script is ignored.
      * @param localeString the locale as string
      * @return the {@link Locale} being generated from the {@code localeString}
      */
@@ -653,9 +684,9 @@ public class JcrResourceBundleProvider
         if (localeString == null || localeString.length() == 0) {
             return Locale.getDefault();
         }
+
         // support BCP 47 compliant strings as well (using a different separator "-" instead of "_")
         localeString = localeString.replaceAll("-", "_");
-
         // check language and country
         final String[] parts = localeString.split("_");
         if (parts.length == 0) {
@@ -663,26 +694,97 @@ public class JcrResourceBundleProvider
         }
 
         // at least language is available
-        String lang = parts[0];
-        boolean isValidLanguageCode = false;
-        String[] langs = Locale.getISOLanguages();
-        for (int i = 0; i < langs.length; i++) {
-            if (langs[i].equalsIgnoreCase(lang)) {
-                isValidLanguageCode = true;
-                break;
-            }
-        }
-        if (!isValidLanguageCode) {
-            lang = Locale.getDefault().getLanguage();
-        }
-
-        // only language
+        String lang = getValidLanguage(parts[0]);
         if (parts.length == 1) {
             return new Locale(lang);
         }
 
-        // country is also available
-        String country = parts[1];
+        Locale localeWithBuilder = createLocaleWithBuilder(parts, lang);
+        if (localeWithBuilder != null) {
+            return localeWithBuilder;
+        }
+
+        return createLocaleWithConstructor(lang, parts);
+    }
+
+    /**
+     * Create locale with Locale.Builder
+     * @param parts parts of Locale string
+     * @param lang language part of Locale string
+     * @return Locale created with Locale.Builder or null if it fails or when parts length is less than 2
+     */
+    private static Locale createLocaleWithBuilder(String[] parts, String lang) {
+        if (parts.length >= 2) {
+            if (isScript(parts[1])) {
+                try {
+                    switch (parts.length) {
+                        case 2:
+                            return new Locale.Builder()
+                                    .setLanguage(lang)
+                                    .setScript(parts[1])
+                                    .build();
+                        case 3:
+                            return new Locale.Builder()
+                                    .setLanguage(lang)
+                                    .setScript(parts[1])
+                                    .setRegion(getValidCountry(parts[2]))
+                                    .build();
+                        default:
+                            return processMultipleParts(parts, lang);
+                    }
+                } catch (IllformedLocaleException e) {
+                    LoggerFactory.getLogger(JcrResourceBundleProvider.class)
+                            .warn(
+                                    "Failed to create locale with LocaleBuilder having parts: {}",
+                                    Arrays.toString(parts),
+                                    e);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Process parts of Locale string when its length is greater than or equals 4
+     * @param parts parts of Locale string
+     * @param lang language part of Locale string
+     * @return Locale created with Locale.Builder or null when parts length is less than 4
+     */
+    private static Locale processMultipleParts(String[] parts, String lang) {
+        if (parts.length >= 4) {
+            Locale.Builder localeBuilder =
+                    new Locale.Builder().setLanguage(lang).setScript(parts[1]).setRegion(getValidCountry(parts[2]));
+            try {
+                localeBuilder.setVariant(parts[3]);
+                return localeBuilder.build();
+            } catch (IllformedLocaleException e) {
+                // creating locale with language, script and country
+                return localeBuilder.build();
+            }
+        }
+        return null;
+    }
+
+    private static String getValidLanguage(String lang) {
+        for (String validLang : Locale.getISOLanguages()) {
+            if (validLang.equalsIgnoreCase(lang)) {
+                return lang;
+            }
+        }
+        return Locale.getDefault().getLanguage();
+    }
+
+    private static String getValidCountry(String country) {
+        return isValidCountryCode(country) ? country : Locale.getDefault().getCountry();
+    }
+
+    private static Locale createLocaleWithConstructor(String lang, String[] parts) {
+        String country = parts.length > 1 ? getValidCountry(parts[1]) : "";
+        String variant = parts.length > 2 ? parts[2] : "";
+        return new Locale(lang, country, variant);
+    }
+
+    private static boolean isValidCountryCode(String country) {
         boolean isValidCountryCode = false;
         // allow user-assigned codes (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#User-assigned_code_elements)
         if (USER_ASSIGNED_COUNTRY_CODES_PATTERN.matcher(country.toLowerCase()).matches()) {
@@ -696,17 +798,26 @@ public class JcrResourceBundleProvider
                 }
             }
         }
-        if (!isValidCountryCode) {
-            country = Locale.getDefault().getCountry();
-        }
+        return isValidCountryCode;
+    }
 
-        // language and country
-        if (parts.length == 2) {
-            return new Locale(lang, country);
-        }
+    private static boolean isAlpha(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    }
 
-        // language, country and variant
-        return new Locale(lang, country, parts[2]);
+    private static boolean isAlphaString(String s) {
+        int len = s.length();
+        for (int i = 0; i < len; i++) {
+            if (!isAlpha(s.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isScript(String s) {
+        // script        = 4ALPHA              ; ISO 15924 code
+        return (s.length() == 4) && isAlphaString(s);
     }
 
     // ---------- internal class
