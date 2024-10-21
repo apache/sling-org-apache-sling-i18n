@@ -29,7 +29,7 @@
     </parent>
 
     <artifactId>org.apache.sling.i18n</artifactId>
-    <version>2.6.5-SNAPSHOT</version>
+    <version>2.6.6</version>
 
     <name>Apache Sling I18N Support</name>
     <description>Support for creating Java I18N ResourceBundles from repository resources.</description>
@@ -37,12 +37,12 @@
     <scm>
         <connection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</connection>
         <developerConnection>scm:git:https://gitbox.apache.org/repos/asf/sling-org-apache-sling-i18n.git</developerConnection>
-        <tag>HEAD</tag>
+        <tag>org.apache.sling.i18n-2.6.6</tag>
         <url>https://github.com/apache/sling-org-apache-sling-i18n.git</url>
     </scm>
 
     <properties>
-        <project.build.outputTimestamp>2024-08-20T12:35:28Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2024-10-21T10:08:07Z</project.build.outputTimestamp>
         <org.ops4j.pax.exam.version>4.13.3</org.ops4j.pax.exam.version>
         <jackrabbit.version>2.20.0</jackrabbit.version>
         <oak.version>1.22</oak.version>
