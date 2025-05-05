@@ -7,4 +7,4 @@
 This module is part of the [Apache Sling](https://sling.apache.org) project.
 
 Support for creating Java I18N ResourceBundles from repository
-resources.
+resources. Further details in <https://sling.apache.org/documentation/bundles/internationalization-support-i18n.html>.
