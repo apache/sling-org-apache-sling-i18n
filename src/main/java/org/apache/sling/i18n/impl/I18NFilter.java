@@ -96,7 +96,7 @@ public class I18NFilter implements Filter {
     /**
      * The current best locale resolver
      */
-    private volatile JakartaRequestLocaleResolver requestLocaleResolver = DEFAULT_LOCALE_RESOLVER;
+    private JakartaRequestLocaleResolver requestLocaleResolver = DEFAULT_LOCALE_RESOLVER;
 
     private final Map<Object, ResourceBundleProvider> providers = new TreeMap<>();
 
