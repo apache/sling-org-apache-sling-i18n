@@ -18,25 +18,23 @@
  */
 package org.apache.sling.i18n;
 
-import javax.servlet.http.HttpServletRequest;
-
 import java.util.List;
 import java.util.Locale;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 /**
- * The <code>RequestLocaleResolver</code> service interface may be implemented by a
+ * The <code>JakartaRequestLocaleResolver</code> service interface may be implemented by a
  * service registered under this name to allow the resolution of the request
  * <code>Locale</code> to apply.
  * <p>
  * This interface is intended to be implemented by providers knowing how to
  * resolve one or more <code>Locale</code>s applicable to handle the request.
  * <p>
- * Only a single <code>RequestLocaleResolver</code> service is currently used.
- * @since 2.2
- * @deprecated use {@link JakartaRequestLocaleResolver} instead
+ * Only a single <code>JakartaRequestLocaleResolver</code> service is currently used.
+ * @since 3.0
  */
-@Deprecated(since = "3.0.0")
-public interface RequestLocaleResolver {
+public interface JakartaRequestLocaleResolver {
 
     /**
      * Return a non-<code>null</code> but possibly empty list of

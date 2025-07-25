@@ -44,8 +44,8 @@ import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.junit.PaxExam;
 import org.ops4j.pax.exam.spi.reactors.ExamReactorStrategy;
 import org.ops4j.pax.exam.spi.reactors.PerClass;
-import org.ops4j.pax.tinybundles.core.TinyBundle;
-import org.ops4j.pax.tinybundles.core.TinyBundles;
+import org.ops4j.pax.tinybundles.TinyBundle;
+import org.ops4j.pax.tinybundles.TinyBundles;
 import org.osgi.framework.Constants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +55,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.ops4j.pax.exam.CoreOptions.composite;
 import static org.ops4j.pax.exam.CoreOptions.streamBundle;
-import static org.ops4j.pax.tinybundles.core.TinyBundles.withBnd;
 
 /**
  * Tests for SLING-10135 for locating resource bundle resources
@@ -149,10 +148,10 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
                 String value = IOUtils.toString(is, StandardCharsets.UTF_8);
                 value = String.format(value, args);
                 try (final InputStream valueStream = new ByteArrayInputStream(value.getBytes())) {
-                    bundle.add(pathInBundle, valueStream);
+                    bundle.addResource(pathInBundle, valueStream);
                 }
             } else {
-                bundle.add(pathInBundle, is);
+                bundle.addResource(pathInBundle, is);
             }
         }
     }
@@ -167,32 +166,33 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
             String basename)
             throws IOException {
         final TinyBundle bundle = TinyBundles.bundle();
-        bundle.set(Constants.BUNDLE_SYMBOLICNAME, bundleSymbolicName);
-        bundle.set(
+        bundle.setHeader(Constants.BUNDLE_SYMBOLICNAME, bundleSymbolicName);
+        bundle.setHeader(
                 Constants.REQUIRE_CAPABILITY,
                 "osgi.extender;filter:=\"(&(osgi.extender=org.apache.sling.i18n.resourcebundle.locator.registrar)(version<=1.0.0)(!(version>=2.0.0)))\"");
         if (traverseDepth <= 0) {
             if (traversePath == null) {
-                bundle.set(Constants.PROVIDE_CAPABILITY, "org.apache.sling.i18n.resourcebundle.locator");
+                bundle.setHeader(Constants.PROVIDE_CAPABILITY, "org.apache.sling.i18n.resourcebundle.locator");
             } else {
-                bundle.set(
+                bundle.setHeader(
                         Constants.PROVIDE_CAPABILITY,
                         String.format("org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\"", traversePath));
             }
         } else {
             if (traversePath == null) {
-                bundle.set(
+                bundle.setHeader(
                         Constants.PROVIDE_CAPABILITY,
                         String.format("org.apache.sling.i18n.resourcebundle.locator;depth=%d", traverseDepth));
             } else {
-                bundle.set(
+                bundle.setHeader(
                         Constants.PROVIDE_CAPABILITY,
                         String.format(
                                 "org.apache.sling.i18n.resourcebundle.locator;paths=\"%s\";depth=%d",
                                 traversePath, traverseDepth));
             }
         }
-        bundle.set("Sling-Bundle-Resources", String.format("%s;path:=%s;propsJSON:=props", resourcePath, pathInBundle));
+        bundle.setHeader(
+                "Sling-Bundle-Resources", String.format("%s;path:=%s;propsJSON:=props", resourcePath, pathInBundle));
 
         for (final Map.Entry<String, String> entry : content.entries()) {
             String entryPathInBundle = entry.getKey();
@@ -205,7 +205,7 @@ public class ResourceBundleLocatorIT extends I18nTestSupport {
                 addContent(bundle, entryPathInBundle, entryResourcePath);
             }
         }
-        return streamBundle(bundle.build(withBnd())).start();
+        return streamBundle(bundle.build(TinyBundles.bndBuilder())).start();
     }
 
     @Before

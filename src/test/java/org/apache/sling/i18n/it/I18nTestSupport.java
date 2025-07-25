@@ -24,9 +24,12 @@ import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.options.ModifiableCompositeOption;
 import org.ops4j.pax.exam.options.extra.VMOption;
 
+import static org.apache.sling.testing.paxexam.SlingOptions.logback;
 import static org.apache.sling.testing.paxexam.SlingOptions.slingQuickstartOakTar;
+import static org.apache.sling.testing.paxexam.SlingOptions.versionResolver;
 import static org.ops4j.pax.exam.CoreOptions.composite;
 import static org.ops4j.pax.exam.CoreOptions.junitBundles;
+import static org.ops4j.pax.exam.CoreOptions.mavenBundle;
 import static org.ops4j.pax.exam.CoreOptions.options;
 import static org.ops4j.pax.exam.CoreOptions.vmOption;
 import static org.ops4j.pax.exam.cm.ConfigurationAdminOptions.factoryConfiguration;
@@ -36,9 +39,27 @@ public abstract class I18nTestSupport extends TestSupport {
 
     @Configuration
     public Option[] configuration() {
+        // SLING-12312 - newer version of sling.api and dependencies
+        //   may remove at a later date if the superclass includes these versions or later
+        versionResolver.setVersionFromProject("org.apache.sling", "org.apache.sling.api");
+        versionResolver.setVersion("org.apache.sling", "org.apache.sling.engine", "3.0.0");
+        versionResolver.setVersion("org.apache.felix", "org.apache.felix.http.servlet-api", "6.1.0");
+        versionResolver.setVersion("org.apache.sling", "org.apache.sling.resourceresolver", "2.0.0");
+        versionResolver.setVersion("org.apache.sling", "org.apache.sling.auth.core", "2.0.0");
+        versionResolver.setVersion("commons-fileupload", "commons-fileupload", "1.6.0");
+        versionResolver.setVersion("org.apache.sling", "org.apache.sling.scripting.spi", "2.0.0");
+        versionResolver.setVersion("org.apache.sling", "org.apache.sling.scripting.core", "3.0.0");
+        versionResolver.setVersion("org.apache.sling", "org.apache.sling.servlets.resolver", "3.0.0");
+        // also need the 2.x version of slf4j and later logback
+        versionResolver.setVersion("org.slf4j", "slf4j-api", "2.0.17");
+        versionResolver.setVersion("org.slf4j", "jcl-over-slf4j", "2.0.17");
+        versionResolver.setVersion("ch.qos.logback", "logback-core", "1.5.18");
+        versionResolver.setVersion("ch.qos.logback", "logback-classic", "1.5.18");
+
         return options(
                 baseConfiguration(),
                 quickstart(),
+                logback(),
                 // Sling I18N
                 testBundle("bundle.filename"),
                 factoryConfiguration("org.apache.sling.jcr.repoinit.RepositoryInitializer")
@@ -53,6 +74,16 @@ public abstract class I18nTestSupport extends TestSupport {
                 newConfiguration("org.apache.sling.jcr.base.internal.LoginAdminWhitelist")
                         .put("whitelist.bundles.regexp", "PAXEXAM-PROBE-.*")
                         .asOption(),
+                // SLING-12312 - begin extra bundles for sling api 3.x
+                mavenBundle()
+                        .groupId("org.apache.felix")
+                        .artifactId("org.apache.felix.http.wrappers")
+                        .versionAsInProject(),
+                mavenBundle()
+                        .groupId("org.apache.sling")
+                        .artifactId("org.apache.sling.commons.johnzon")
+                        .version("2.0.0"),
+                // end extra bundles for sling api 3.x
                 junitBundles(),
                 optionalRemoteDebug(),
                 optionalJacocoCommand());

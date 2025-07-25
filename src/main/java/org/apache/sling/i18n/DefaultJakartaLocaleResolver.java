@@ -18,37 +18,23 @@
  */
 package org.apache.sling.i18n;
 
-import javax.servlet.http.HttpServletRequest;
-
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 
-import org.apache.sling.api.SlingHttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * The <code>DefaultLocaleResolver</code> resolves the request's Locale by
  * calling the <code>ServletRequest.getLocales()</code> method, which generally
  * will be the Servlet Container's implementation of this method and thus be
  * based on the client's <code>Accept-Language</code> header.
- *
- * @deprecated use {@link DefaultJakartaLocaleResolver} instead
  */
-@Deprecated(since = "3.0.0")
-public class DefaultLocaleResolver implements LocaleResolver, RequestLocaleResolver {
+public class DefaultJakartaLocaleResolver implements JakartaRequestLocaleResolver {
 
     /**
-     * Return the Locales provided by the
-     * <code>ServletRequest.getLocales()</code> method collected in a
-     * <code>List</code>.
-     */
-    public List<Locale> resolveLocale(final SlingHttpServletRequest request) {
-        return this.resolveLocale((HttpServletRequest) request);
-    }
-
-    /**
-     * @see org.apache.sling.i18n.RequestLocaleResolver#resolveLocale(javax.servlet.http.HttpServletRequest)
+     * @see org.apache.sling.i18n.JakartaRequestLocaleResolver#resolveLocale(jakarta.servlet.http.HttpServletRequest)
      */
     public List<Locale> resolveLocale(final HttpServletRequest request) {
         Enumeration<Locale> locales = request.getLocales();

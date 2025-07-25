@@ -32,7 +32,7 @@ import org.apache.sling.api.SlingHttpServletRequest;
  * resolve one or more <code>Locale</code>s applicable to handle the request.
  * <p>
  * Only a single <code>LocaleResolver</code> service is currently used.
- * @deprecated The {@link RequestLocaleResolver} should be used instead.
+ * @deprecated The {@link JakartaRequestLocaleResolver} should be used instead.
  */
 @Deprecated
 public interface LocaleResolver {

@@ -18,32 +18,31 @@
  */
 package org.apache.sling.i18n.impl;
 
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletRequestWrapper;
-
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.MissingResourceException;
+import java.util.Objects;
 import java.util.ResourceBundle;
 import java.util.TreeMap;
 
-import org.apache.sling.api.SlingHttpServletRequest;
-import org.apache.sling.api.wrappers.SlingHttpServletRequestWrapper;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
+import org.apache.sling.api.SlingJakartaHttpServletRequest;
+import org.apache.sling.api.wrappers.SlingJakartaHttpServletRequestWrapper;
 import org.apache.sling.commons.osgi.Order;
 import org.apache.sling.commons.osgi.ServiceUtil;
-import org.apache.sling.i18n.DefaultLocaleResolver;
-import org.apache.sling.i18n.LocaleResolver;
-import org.apache.sling.i18n.RequestLocaleResolver;
+import org.apache.sling.i18n.DefaultJakartaLocaleResolver;
+import org.apache.sling.i18n.JakartaRequestLocaleResolver;
 import org.apache.sling.i18n.ResourceBundleProvider;
 import org.osgi.framework.Constants;
 import org.osgi.service.component.annotations.Component;
@@ -81,11 +80,23 @@ public class I18NFilter implements Filter {
     /** Logger */
     private static final Logger LOG = LoggerFactory.getLogger(I18NFilter.class.getName());
 
-    private final DefaultLocaleResolver DEFAULT_LOCALE_RESOLVER = new DefaultLocaleResolver();
+    private final DefaultJakartaLocaleResolver DEFAULT_LOCALE_RESOLVER = new DefaultJakartaLocaleResolver();
 
-    private volatile LocaleResolver localeResolver = DEFAULT_LOCALE_RESOLVER;
+    /**
+     * We can have potentially 3 different kinds of bound LocaleResolvers, so store
+     * the candidates here (ordered by preference) and then resolve which to use via
+     * the {@link #calculateBestLocaleResolver()} method
+     */
+    private final JakartaRequestLocaleResolver[] localeResolvers = new JakartaRequestLocaleResolver[] {
+        null, // for bound JakartaRequestLocaleResolver
+        null, // for deprecated bound RequestLocaleResolver
+        null // for deprecated bound LocaleResolver
+    };
 
-    private volatile RequestLocaleResolver requestLocaleResolver = DEFAULT_LOCALE_RESOLVER;
+    /**
+     * The current best locale resolver
+     */
+    private volatile JakartaRequestLocaleResolver requestLocaleResolver = DEFAULT_LOCALE_RESOLVER;
 
     private final Map<Object, ResourceBundleProvider> providers = new TreeMap<>();
 
@@ -93,34 +104,14 @@ public class I18NFilter implements Filter {
 
     private final ResourceBundleProvider combinedProvider = new CombinedBundleProvider();
 
-    /** Count the number init() has been called. */
-    private volatile int initCount;
-
     /**
-     * @see javax.servlet.Filter#init(javax.servlet.FilterConfig)
-     */
-    @Override
-    public void init(FilterConfig filterConfig) {
-        synchronized (this) {
-            initCount++;
-        }
-    }
-
-    /**
-     * @see javax.servlet.Filter#doFilter(javax.servlet.ServletRequest, javax.servlet.ServletResponse, javax.servlet.FilterChain)
+     * @see jakarta.servlet.Filter#doFilter(jakarta.servlet.ServletRequest, jakarta.servlet.ServletResponse, jakarta.servlet.FilterChain)
      */
     @Override
     public void doFilter(ServletRequest request, final ServletResponse response, final FilterChain chain)
             throws IOException, ServletException {
-        final boolean runGlobal = this.initCount == 2;
-        if (request instanceof SlingHttpServletRequest) {
-            // check if we can use the simple version to wrap
-            if (!runGlobal || this.requestLocaleResolver == DEFAULT_LOCALE_RESOLVER) {
-                // wrap with our ResourceBundle provisioning
-                request = new I18NSlingHttpServletRequest(request, combinedProvider, localeResolver);
-            } else {
-                request = new BaseI18NSlingHttpServletRequest(request, combinedProvider);
-            }
+        if (request instanceof SlingJakartaHttpServletRequest) {
+            request = new I18NSlingJakartaHttpServletRequest(request, combinedProvider, requestLocaleResolver);
         } else {
             request = new I18NHttpServletRequest(request, combinedProvider, requestLocaleResolver);
         }
@@ -129,29 +120,71 @@ public class I18NFilter implements Filter {
         chain.doFilter(request, response);
     }
 
-    /**
-     * @see javax.servlet.Filter#destroy()
-     */
-    @Override
-    public void destroy() {
-        synchronized (this) {
-            initCount--;
-        }
-    }
-
     // ---------- SCR Integration ----------------------------------------------
 
+    /**
+     * Given all the bound locale resolver candidates, resolve the preferred one.
+     * Use the non-deprecated candidate if we have one, or fallback to the least
+     * deprecated variant otherwise.
+     */
+    protected JakartaRequestLocaleResolver calculateBestLocaleResolver() {
+        return Arrays.stream(localeResolvers)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(DEFAULT_LOCALE_RESOLVER);
+    }
+
+    /**
+     * @deprecated use {@link #bindJakartaRequestLocaleResolver(JakartaRequestLocaleResolver)} instead
+     */
+    @Deprecated(since = "3.0.0")
     @Reference(
             cardinality = ReferenceCardinality.OPTIONAL,
             policy = ReferencePolicy.DYNAMIC,
             policyOption = ReferencePolicyOption.GREEDY)
-    protected void bindLocaleResolver(final LocaleResolver resolver) {
-        this.localeResolver = resolver;
+    protected void bindLocaleResolver(final org.apache.sling.i18n.LocaleResolver resolver) {
+        synchronized (localeResolvers) {
+            // wrap it with a JakartaRequestLocaleResolver impl
+            this.localeResolvers[2] = new LocaleResolverWrapper(resolver);
+            this.requestLocaleResolver = calculateBestLocaleResolver();
+        }
     }
 
-    protected void unbindLocaleResolver(final LocaleResolver resolver) {
-        if (this.localeResolver == resolver) {
-            this.localeResolver = DEFAULT_LOCALE_RESOLVER;
+    /**
+     * @deprecated use {@link #unbindJakartaRequestLocaleResolver(JakartaRequestLocaleResolver)} instead
+     */
+    @Deprecated(since = "3.0.0")
+    protected void unbindLocaleResolver(final org.apache.sling.i18n.LocaleResolver resolver) {
+        synchronized (localeResolvers) {
+            this.localeResolvers[2] = null;
+            this.requestLocaleResolver = calculateBestLocaleResolver();
+        }
+    }
+
+    /**
+     * @deprecated use {@link #bindJakartaRequestLocaleResolver(JakartaRequestLocaleResolver)} instead
+     */
+    @Deprecated(since = "3.0.0")
+    @Reference(
+            cardinality = ReferenceCardinality.OPTIONAL,
+            policy = ReferencePolicy.DYNAMIC,
+            policyOption = ReferencePolicyOption.GREEDY)
+    protected void bindRequestLocaleResolver(final org.apache.sling.i18n.RequestLocaleResolver resolver) {
+        synchronized (localeResolvers) {
+            // wrap it with a JakartaRequestLocaleResolver impl
+            this.localeResolvers[1] = new RequestLocaleResolverWrapper(resolver);
+            this.requestLocaleResolver = calculateBestLocaleResolver();
+        }
+    }
+
+    /**
+     * @deprecated use {@link #bindJakartaRequestLocaleResolver(JakartaRequestLocaleResolver)} instead
+     */
+    @Deprecated(since = "3.0.0")
+    protected void unbindRequestLocaleResolver(final org.apache.sling.i18n.RequestLocaleResolver resolver) {
+        synchronized (localeResolvers) {
+            this.localeResolvers[1] = null;
+            this.requestLocaleResolver = calculateBestLocaleResolver();
         }
     }
 
@@ -159,13 +192,17 @@ public class I18NFilter implements Filter {
             cardinality = ReferenceCardinality.OPTIONAL,
             policy = ReferencePolicy.DYNAMIC,
             policyOption = ReferencePolicyOption.GREEDY)
-    protected void bindRequestLocaleResolver(final RequestLocaleResolver resolver) {
-        this.requestLocaleResolver = resolver;
+    protected void bindJakartaRequestLocaleResolver(final JakartaRequestLocaleResolver resolver) {
+        synchronized (localeResolvers) {
+            this.localeResolvers[0] = resolver;
+            this.requestLocaleResolver = calculateBestLocaleResolver();
+        }
     }
 
-    protected void unbindRequestLocaleResolver(final RequestLocaleResolver resolver) {
-        if (this.requestLocaleResolver == resolver) {
-            this.requestLocaleResolver = DEFAULT_LOCALE_RESOLVER;
+    protected void unbindJakartaRequestLocaleResolver(final JakartaRequestLocaleResolver resolver) {
+        synchronized (localeResolvers) {
+            this.localeResolvers[0] = null;
+            this.requestLocaleResolver = calculateBestLocaleResolver();
         }
     }
 
@@ -183,7 +220,7 @@ public class I18NFilter implements Filter {
     protected void unbindResourceBundleProvider(
             final ResourceBundleProvider provider, final Map<String, Object> props) {
         synchronized (this.providers) {
-            this.providers.remove(ServiceUtil.getComparableForServiceRanking(props, Order.ASCENDING));
+            this.providers.remove(ServiceUtil.getComparableForServiceRanking(props, Order.ASCENDING), provider);
             this.sortedProviders = this.providers.values().toArray(new ResourceBundleProvider[this.providers.size()]);
         }
     }
@@ -247,7 +284,7 @@ public class I18NFilter implements Filter {
 
         private final ResourceBundleProvider bundleProvider;
 
-        private final RequestLocaleResolver localeResolver;
+        private final JakartaRequestLocaleResolver localeResolver;
 
         private Locale locale;
 
@@ -258,7 +295,7 @@ public class I18NFilter implements Filter {
         I18NHttpServletRequest(
                 final ServletRequest delegatee,
                 final ResourceBundleProvider bundleProvider,
-                final RequestLocaleResolver localeResolver) {
+                final JakartaRequestLocaleResolver localeResolver) {
             super((HttpServletRequest) delegatee);
             this.bundleProvider = bundleProvider;
             this.localeResolver = localeResolver;
@@ -301,13 +338,22 @@ public class I18NFilter implements Filter {
         }
     }
 
-    private static class BaseI18NSlingHttpServletRequest extends SlingHttpServletRequestWrapper {
+    private static class I18NSlingJakartaHttpServletRequest extends SlingJakartaHttpServletRequestWrapper {
 
-        protected final ResourceBundleProvider bundleProvider;
+        private final ResourceBundleProvider bundleProvider;
+        private final JakartaRequestLocaleResolver localeResolver;
 
-        BaseI18NSlingHttpServletRequest(final ServletRequest delegatee, final ResourceBundleProvider bundleProvider) {
-            super((SlingHttpServletRequest) delegatee);
+        private Locale locale;
+
+        private List<Locale> localeList;
+
+        I18NSlingJakartaHttpServletRequest(
+                final ServletRequest delegatee,
+                final ResourceBundleProvider bundleProvider,
+                final JakartaRequestLocaleResolver localeResolver) {
+            super((SlingJakartaHttpServletRequest) delegatee);
             this.bundleProvider = bundleProvider;
+            this.localeResolver = localeResolver;
         }
 
         @Override
@@ -332,23 +378,6 @@ public class I18NFilter implements Filter {
             }
 
             return super.getResourceBundle(baseName, locale);
-        }
-    }
-
-    private static class I18NSlingHttpServletRequest extends BaseI18NSlingHttpServletRequest {
-
-        private final LocaleResolver localeResolver;
-
-        private Locale locale;
-
-        private List<Locale> localeList;
-
-        I18NSlingHttpServletRequest(
-                final ServletRequest delegatee,
-                final ResourceBundleProvider bundleProvider,
-                final LocaleResolver localeResolver) {
-            super(delegatee, bundleProvider);
-            this.localeResolver = localeResolver;
         }
 
         @Override
