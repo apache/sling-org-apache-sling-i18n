@@ -35,7 +35,7 @@ import org.apache.sling.api.SlingHttpServletRequest;
  *
  * @deprecated use {@link DefaultJakartaLocaleResolver} instead
  */
-@Deprecated(since = "3.0.0")
+@Deprecated(since = "2.3.0")
 public class DefaultLocaleResolver implements LocaleResolver, RequestLocaleResolver {
 
     /**

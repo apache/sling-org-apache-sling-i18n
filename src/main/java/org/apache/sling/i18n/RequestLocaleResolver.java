@@ -35,7 +35,7 @@ import java.util.Locale;
  * @since 2.2
  * @deprecated use {@link JakartaRequestLocaleResolver} instead
  */
-@Deprecated(since = "3.0.0")
+@Deprecated(since = "2.3.0")
 public interface RequestLocaleResolver {
 
     /**
