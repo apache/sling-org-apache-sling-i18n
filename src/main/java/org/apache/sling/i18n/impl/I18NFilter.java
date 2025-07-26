@@ -80,7 +80,7 @@ public class I18NFilter implements Filter {
     /** Logger */
     private static final Logger LOG = LoggerFactory.getLogger(I18NFilter.class.getName());
 
-    private final DefaultJakartaLocaleResolver DEFAULT_LOCALE_RESOLVER = new DefaultJakartaLocaleResolver();
+    private final DefaultJakartaLocaleResolver defaultLocaleResolver = new DefaultJakartaLocaleResolver();
 
     /**
      * We can have potentially 3 different kinds of bound LocaleResolvers, so store
@@ -96,7 +96,7 @@ public class I18NFilter implements Filter {
     /**
      * The current best locale resolver
      */
-    private JakartaRequestLocaleResolver requestLocaleResolver = DEFAULT_LOCALE_RESOLVER;
+    private JakartaRequestLocaleResolver requestLocaleResolver = defaultLocaleResolver;
 
     private final Map<Object, ResourceBundleProvider> providers = new TreeMap<>();
 
@@ -131,7 +131,7 @@ public class I18NFilter implements Filter {
         return Arrays.stream(localeResolvers)
                 .filter(Objects::nonNull)
                 .findFirst()
-                .orElse(DEFAULT_LOCALE_RESOLVER);
+                .orElse(defaultLocaleResolver);
     }
 
     /**
@@ -199,7 +199,7 @@ public class I18NFilter implements Filter {
         }
     }
 
-    protected void unbindJakartaRequestLocaleResolver(final JakartaRequestLocaleResolver resolver) {
+    protected void unbindJakartaRequestLocaleResolver(final JakartaRequestLocaleResolver resolver) { // NOSONAR
         synchronized (localeResolvers) {
             this.localeResolvers[0] = null;
             this.requestLocaleResolver = calculateBestLocaleResolver();

@@ -32,6 +32,7 @@ import org.apache.sling.i18n.LocaleResolver;
 /**
  * Adapter to convert the a deprecated LocaleResolver object to
  * JakartaRequestLocaleResolver
+ * @deprecated use a {@link JakartaRequestLocaleResolver} instead
  */
 @Deprecated(since = "3.0.0")
 public class LocaleResolverWrapper implements JakartaRequestLocaleResolver {

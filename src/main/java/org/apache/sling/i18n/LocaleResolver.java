@@ -34,7 +34,7 @@ import org.apache.sling.api.SlingHttpServletRequest;
  * Only a single <code>LocaleResolver</code> service is currently used.
  * @deprecated The {@link JakartaRequestLocaleResolver} should be used instead.
  */
-@Deprecated
+@Deprecated(since = "2.2.0")
 public interface LocaleResolver {
 
     /**
