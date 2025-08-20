@@ -33,7 +33,9 @@ import java.util.Locale;
  * <p>
  * Only a single <code>RequestLocaleResolver</code> service is currently used.
  * @since 2.2
+ * @deprecated use {@link JakartaRequestLocaleResolver} instead
  */
+@Deprecated(since = "2.3.0")
 public interface RequestLocaleResolver {
 
     /**

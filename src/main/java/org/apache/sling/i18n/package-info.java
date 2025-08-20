@@ -17,5 +17,5 @@
  * under the License.
  */
 
-@org.osgi.annotation.versioning.Version("2.2.1")
+@org.osgi.annotation.versioning.Version("2.3.0")
 package org.apache.sling.i18n;

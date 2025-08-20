@@ -29,7 +29,7 @@
     </parent>
 
     <artifactId>org.apache.sling.i18n</artifactId>
-    <version>2.6.7-SNAPSHOT</version>
+    <version>3.0.0-SNAPSHOT</version>
 
     <name>Apache Sling I18N Support</name>
     <description>Support for creating Java I18N ResourceBundles from repository resources.</description>
@@ -43,10 +43,11 @@
 
     <properties>
         <project.build.outputTimestamp>2024-10-21T10:09:18Z</project.build.outputTimestamp>
-        <org.ops4j.pax.exam.version>4.13.3</org.ops4j.pax.exam.version>
+        <org.ops4j.pax.exam.version>4.14.0</org.ops4j.pax.exam.version>
         <jackrabbit.version>2.20.0</jackrabbit.version>
         <oak.version>1.22</oak.version>
-        <sling.java.version>8</sling.java.version>
+        <sling.java.version>17</sling.java.version>
+        <slf4j.version>2.0.17</slf4j.version>
     </properties>
 
     <dependencies>
@@ -54,6 +55,19 @@
         <dependency>
             <groupId>javax.servlet</groupId>
             <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>6.0.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.http.wrappers</artifactId>
+            <version>1.1.10</version>
             <scope>provided</scope>
         </dependency>
         <!-- OSGi -->
@@ -106,7 +120,7 @@
         <dependency>
             <groupId>org.apache.sling</groupId>
             <artifactId>org.apache.sling.api</artifactId>
-            <version>2.16.4</version>
+            <version>3.0.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -118,6 +132,7 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -136,7 +151,7 @@
         <dependency>
             <groupId>org.apache.sling</groupId>
             <artifactId>org.apache.sling.testing.paxexam</artifactId>
-            <version>4.0.0</version>
+            <version>4.1.2</version>
             <scope>test</scope>
         </dependency>
         <!-- Apache Felix -->
@@ -232,6 +247,7 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
