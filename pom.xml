@@ -44,7 +44,7 @@
     <properties>
         <project.build.outputTimestamp>2025-08-20T22:13:35Z</project.build.outputTimestamp>
         <org.ops4j.pax.exam.version>4.14.0</org.ops4j.pax.exam.version>
-        <jackrabbit.version>2.20.0</jackrabbit.version>
+        <jackrabbit.version>2.22.2</jackrabbit.version>
         <oak.version>1.22</oak.version>
         <sling.java.version>17</sling.java.version>
         <slf4j.version>2.0.17</slf4j.version>
