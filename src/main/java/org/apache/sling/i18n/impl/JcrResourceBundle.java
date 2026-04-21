@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EmptyStackException;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -294,12 +295,14 @@ public class JcrResourceBundle extends ResourceBundle {
 
                 parser.parse(stream, encoding);
 
-            } catch (IOException e) {
+            } catch (IOException | EmptyStackException e) {
+                // catch the EmptyStackException until the JsonParser catches it as well
                 log.warn("Could not parse i18n json dictionary {}: {}", resource.getPath(), e.getMessage());
             } finally {
                 try {
                     stream.close();
                 } catch (IOException ignore) {
+                    // ignore
                 }
             }
         } else {
