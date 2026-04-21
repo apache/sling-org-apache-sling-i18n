@@ -296,7 +296,7 @@ public class JcrResourceBundle extends ResourceBundle {
                 parser.parse(stream, encoding);
 
             } catch (IOException | EmptyStackException e) {
-                // catch the EmptyStackException until the JsonParser catches it as well
+                // catch the EmptyStackException until the JsonParser catches it as well -- JCR-5237
                 log.warn("Could not parse i18n json dictionary {}: {}", resource.getPath(), e.getMessage());
             } finally {
                 try {
