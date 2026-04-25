@@ -28,7 +28,9 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.lang.reflect.Method;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
@@ -36,6 +38,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.api.resource.ResourceMetadata;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.testing.mock.jcr.MockJcr;
 import org.apache.sling.testing.mock.jcr.MockQueryResult;
@@ -44,6 +48,7 @@ import org.apache.sling.testing.mock.sling.junit.SlingContext;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -446,5 +451,41 @@ public class JcrResourceBundleTest {
                     "bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
         }
         assertEquals(MESSAGES_DE.size(), counter);
+    }
+
+    @Test
+    public void test_json_dictionary_with_invalid_encoding_is_ignored() throws Exception {
+        Map<String, Object> targetDictionary = new LinkedHashMap<>();
+
+        invokeLoadJsonDictionary(mockJsonResource("{\"key\":\"value\"}", "does-not-exist"), targetDictionary);
+
+        assertTrue("dictionary should stay empty for invalid encoding metadata", targetDictionary.isEmpty());
+    }
+
+    @Test
+    public void test_json_dictionary_with_invalid_json_is_ignored() throws Exception {
+        Map<String, Object> targetDictionary = new LinkedHashMap<>();
+
+        invokeLoadJsonDictionary(mockJsonResource("{\"key\":", StandardCharsets.UTF_8.name()), targetDictionary);
+
+        assertTrue("dictionary should stay empty for malformed JSON", targetDictionary.isEmpty());
+    }
+
+    private void invokeLoadJsonDictionary(Resource resource, Map<String, Object> targetDictionary) throws Exception {
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
+        Method method = JcrResourceBundle.class.getDeclaredMethod("loadJsonDictionary", Resource.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(bundle, resource, targetDictionary);
+    }
+
+    private Resource mockJsonResource(String json, String encoding) {
+        Resource resource = Mockito.mock(Resource.class);
+        ResourceMetadata metadata = Mockito.mock(ResourceMetadata.class);
+        Mockito.when(resource.getPath()).thenReturn("/apps/i18n/de.json");
+        Mockito.when(resource.getResourceMetadata()).thenReturn(metadata);
+        Mockito.when(metadata.getCharacterEncoding()).thenReturn(encoding);
+        Mockito.when(resource.adaptTo(InputStream.class))
+                .thenReturn(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)));
+        return resource;
     }
 }

@@ -18,8 +18,15 @@
  */
 package org.apache.sling.i18n.impl;
 
+import javax.json.spi.JsonProvider;
+import javax.json.stream.JsonParser;
+import javax.json.stream.JsonParser.Event;
+
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -34,8 +41,6 @@ import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.Set;
 
-import org.apache.jackrabbit.commons.json.JsonHandler;
-import org.apache.jackrabbit.commons.json.JsonParser;
 import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceMetadata;
 import org.apache.sling.api.resource.ResourceResolver;
@@ -245,62 +250,29 @@ public class JcrResourceBundle extends ResourceBundle {
     private void loadJsonDictionary(Resource resource, final Map<String, Object> targetDictionary) {
         log.info("Loading json dictionary: {}", resource.getPath());
 
-        // use streaming parser (we don't need the dict in memory twice)
-        JsonParser parser = new JsonParser(new JsonHandler() {
-
-            private String key;
-
-            @Override
-            public void key(String key) throws IOException {
-                this.key = key;
-            }
-
-            @Override
-            public void value(String value) throws IOException {
-                targetDictionary.put(key, value);
-            }
-
-            @Override
-            public void object() throws IOException {}
-
-            @Override
-            public void endObject() throws IOException {}
-
-            @Override
-            public void array() throws IOException {}
-
-            @Override
-            public void endArray() throws IOException {}
-
-            @Override
-            public void value(boolean value) throws IOException {}
-
-            @Override
-            public void value(long value) throws IOException {}
-
-            @Override
-            public void value(double value) throws IOException {}
-        });
-
         final InputStream stream = resource.adaptTo(InputStream.class);
         if (stream != null) {
-            String encoding = "utf-8";
-            final ResourceMetadata metadata = resource.getResourceMetadata();
-            if (metadata.getCharacterEncoding() != null) {
-                encoding = metadata.getCharacterEncoding();
-            }
-
-            try {
-
-                parser.parse(stream, encoding);
-
-            } catch (IOException e) {
-                log.warn("Could not parse i18n json dictionary {}: {}", resource.getPath(), e.getMessage());
-            } finally {
-                try {
-                    stream.close();
-                } catch (IOException ignore) {
+            try (InputStream input = stream) {
+                Charset charset = StandardCharsets.UTF_8;
+                final ResourceMetadata metadata = resource.getResourceMetadata();
+                if (metadata != null && metadata.getCharacterEncoding() != null) {
+                    charset = Charset.forName(metadata.getCharacterEncoding());
                 }
+
+                try (InputStreamReader reader = new InputStreamReader(input, charset);
+                        JsonParser parser = JsonProvider.provider().createParser(reader)) {
+                    String key = null;
+                    while (parser.hasNext()) {
+                        final Event event = parser.next();
+                        if (event == Event.KEY_NAME) {
+                            key = parser.getString();
+                        } else if (event == Event.VALUE_STRING && key != null) {
+                            targetDictionary.put(key, parser.getString());
+                        }
+                    }
+                }
+            } catch (IOException | RuntimeException e) {
+                log.warn("Could not parse i18n json dictionary {}: {}", resource.getPath(), e.getMessage());
             }
         } else {
             log.warn("Not a json file: {}", resource.getPath());

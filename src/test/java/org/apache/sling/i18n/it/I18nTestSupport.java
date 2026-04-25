@@ -77,6 +77,14 @@ public abstract class I18nTestSupport extends TestSupport {
                         .artifactId("org.apache.felix.http.wrappers")
                         .versionAsInProject(),
                 mavenBundle()
+                        .groupId("org.apache.geronimo.specs")
+                        .artifactId("geronimo-json_1.1_spec")
+                        .version("1.5"),
+                mavenBundle()
+                        .groupId("org.apache.johnzon")
+                        .artifactId("johnzon-core")
+                        .versionAsInProject(),
+                mavenBundle()
                         .groupId("org.apache.sling")
                         .artifactId("org.apache.sling.commons.johnzon")
                         .version("2.0.0"),
