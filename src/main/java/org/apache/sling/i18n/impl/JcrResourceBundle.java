@@ -21,6 +21,7 @@ package org.apache.sling.i18n.impl;
 import javax.json.spi.JsonProvider;
 import javax.json.stream.JsonParser;
 import javax.json.stream.JsonParser.Event;
+import javax.json.stream.JsonParsingException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -255,7 +256,7 @@ public class JcrResourceBundle extends ResourceBundle {
             try (InputStream input = stream) {
                 Charset charset = StandardCharsets.UTF_8;
                 final ResourceMetadata metadata = resource.getResourceMetadata();
-                if (metadata != null && metadata.getCharacterEncoding() != null) {
+                if (metadata.getCharacterEncoding() != null) {
                     charset = Charset.forName(metadata.getCharacterEncoding());
                 }
 
@@ -271,7 +272,7 @@ public class JcrResourceBundle extends ResourceBundle {
                         }
                     }
                 }
-            } catch (IOException | RuntimeException e) {
+            } catch (IOException | IllegalArgumentException | JsonParsingException e) {
                 log.warn("Could not parse i18n json dictionary {}: {}", resource.getPath(), e.getMessage());
             }
         } else {
