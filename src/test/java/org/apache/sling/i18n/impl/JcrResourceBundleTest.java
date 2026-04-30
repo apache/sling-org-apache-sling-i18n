@@ -29,6 +29,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
@@ -446,5 +447,32 @@ public class JcrResourceBundleTest {
                     "bundle returned key that is not supposed to be there: " + key, MESSAGES_DE_APPS.containsKey(key));
         }
         assertEquals(MESSAGES_DE.size(), counter);
+    }
+
+    @Test
+    public void jsonDictionaryWithDuplicateKey() throws Exception {
+        Node appsI18n = getSession().getRootNode().addNode("apps").addNode("i18n", "nt:unstructured");
+        Node deJson = appsI18n.addNode("de.json", "nt:file");
+        deJson.addMixin("mix:language");
+        deJson.setProperty("jcr:language", "de");
+        Node content = deJson.addNode("jcr:content", "nt:resource");
+        content.setProperty("jcr:mimeType", "application/json");
+
+        // manually creating json file, good enough for the test
+        StringBuilder json = new StringBuilder();
+        json.append("{");
+        json.append("\"kitchen\": \"Küche1\",\n");
+        json.append("\"kitchen\": \"Küche2\",\n");
+        json.append("}");
+
+        InputStream stream = new ByteArrayInputStream(json.toString().getBytes(StandardCharsets.UTF_8));
+        Binary binary = getSession().getValueFactory().createBinary(stream);
+        content.setProperty("jcr:data", binary);
+        getSession().save();
+
+        // test getString
+        JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
+        // last entry wins in case of duplicate keys, test if kitchen2 is returned
+        assertEquals("Küche2", bundle.getString("kitchen"));
     }
 }
