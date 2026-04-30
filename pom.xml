@@ -212,7 +212,12 @@
             <version>${org.ops4j.pax.exam.version}</version>
             <scope>test</scope>
         </dependency>
-
+        <dependency>
+            <groupId>org.apache.johnzon</groupId>
+            <artifactId>johnzon-core</artifactId>
+            <version>1.2.22</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.apache.sling</groupId>
             <artifactId>org.apache.sling.testing.jcr-mock</artifactId>
