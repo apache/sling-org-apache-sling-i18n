@@ -454,38 +454,29 @@ public class JcrResourceBundleTest {
     }
 
     @Test
-    public void test_json_dictionary_with_invalid_encoding_is_ignored() throws Exception {
-        Map<String, Object> targetDictionary = new LinkedHashMap<>();
+    public void jsonDictionaryWithDuplicateKey() throws Exception {
+        Node appsI18n = getSession().getRootNode().addNode("apps").addNode("i18n", "nt:unstructured");
+        Node deJson = appsI18n.addNode("de.json", "nt:file");
+        deJson.addMixin("mix:language");
+        deJson.setProperty("jcr:language", "de");
+        Node content = deJson.addNode("jcr:content", "nt:resource");
+        content.setProperty("jcr:mimeType", "application/json");
 
-        invokeLoadJsonDictionary(mockJsonResource("{\"key\":\"value\"}", "does-not-exist"), targetDictionary);
+        // manually creating json file, good enough for the test
+        StringBuilder json = new StringBuilder();
+        json.append("{");
+        json.append("\"kitchen\": \"Küche1\",\n");
+        json.append("\"kitchen\": \"Küche2\",\n");
+        json.append("}");
 
-        assertTrue("dictionary should stay empty for invalid encoding metadata", targetDictionary.isEmpty());
-    }
+        InputStream stream = new ByteArrayInputStream(json.toString().getBytes(StandardCharsets.UTF_8));
+        Binary binary = getSession().getValueFactory().createBinary(stream);
+        content.setProperty("jcr:data", binary);
+        getSession().save();
 
-    @Test
-    public void test_json_dictionary_with_invalid_json_is_ignored() throws Exception {
-        Map<String, Object> targetDictionary = new LinkedHashMap<>();
-
-        invokeLoadJsonDictionary(mockJsonResource("{\"key\":", StandardCharsets.UTF_8.name()), targetDictionary);
-
-        assertTrue("dictionary should stay empty for malformed JSON", targetDictionary.isEmpty());
-    }
-
-    private void invokeLoadJsonDictionary(Resource resource, Map<String, Object> targetDictionary) throws Exception {
+        // test getString
         JcrResourceBundle bundle = new JcrResourceBundle(new Locale("de"), null, resolver, null, new PathFilter());
-        Method method = JcrResourceBundle.class.getDeclaredMethod("loadJsonDictionary", Resource.class, Map.class);
-        method.setAccessible(true);
-        method.invoke(bundle, resource, targetDictionary);
-    }
-
-    private Resource mockJsonResource(String json, String encoding) {
-        Resource resource = Mockito.mock(Resource.class);
-        ResourceMetadata metadata = Mockito.mock(ResourceMetadata.class);
-        Mockito.when(resource.getPath()).thenReturn("/apps/i18n/de.json");
-        Mockito.when(resource.getResourceMetadata()).thenReturn(metadata);
-        Mockito.when(metadata.getCharacterEncoding()).thenReturn(encoding);
-        Mockito.when(resource.adaptTo(InputStream.class))
-                .thenReturn(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)));
-        return resource;
+        // last entry wins in case of duplicate keys, test if kitchen2 is returned
+        assertEquals("Küche2", bundle.getString("kitchen"));
     }
 }
