@@ -62,8 +62,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 
 /**
- * Test case to verify that each bundle is only loaded once, even
- * if concurrent requests for the same bundle are made.
+ * Verifies bundle caching, concurrent loading, and refreshed fallback chains
+ * with both eager preloading and lazy invalidation.
  */
 @RunWith(Parameterized.class)
 public class ConcurrentJcrResourceBundleLoadingTest {
@@ -158,6 +158,10 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertEquals(1, germanSet.size());
     }
 
+    /**
+     * Reloading a child must preserve its unchanged parent, both in the cache
+     * and in the child's fallback reference.
+     */
     @Test
     public void newBundleUsedAfterReload() throws Exception {
         ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
@@ -175,6 +179,12 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
     }
 
+    /**
+     * Changes an English fallback shared by the de -> en, de_DE -> de -> en,
+     * and fr -> en chains. Refreshed children must reference the current parents
+     * and return the new fallback while retaining locale-specific overrides.
+     * An explicitly unnamed reload must leave the named bundle chain untouched.
+     */
     @Test
     public void reloadedFallbacksUseCurrentParents() {
         Resource englishDictionary = createDictionary("en", "en");
@@ -217,6 +227,11 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertEquals("Named English", named.getString("named"));
     }
 
+    /**
+     * Refreshes the named en -> de -> de_DE dependency chain and verifies its
+     * updated fallback value and parent references. Explicitly refreshing that
+     * basename must not replace the cached unnamed bundles.
+     */
     @Test
     public void namedFallbackRefreshDoesNotReplaceOtherBasenames() {
         Resource dictionary = createDictionary("named-en", "en", "named");
@@ -254,6 +269,11 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         return dictionary;
     }
 
+    /**
+     * Replacing a parent must also replace its dependent child and attach the
+     * child to the new parent. New bundle identities alone would miss a stale
+     * parent reference left by child-first eager refresh.
+     */
     @Test
     public void newBundleUsedAsParentAfterReload() throws Exception {
         ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);

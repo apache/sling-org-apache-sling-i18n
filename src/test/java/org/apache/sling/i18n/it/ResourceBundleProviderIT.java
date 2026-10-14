@@ -175,9 +175,16 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
         assertMessage(MSG_KEY1, Locale.ENGLISH, BASENAME, "overwritten");
     }
 
+    /**
+     * Verifies that repository observation propagates an English fallback update
+     * to German, German-country, and French bundles after they have been cached.
+     * The nt:unstructured entry is supported by message loading but avoids the
+     * sling:MessageEntry detection that promotes edits to full rediscovery.
+     * This exercises targeted refresh, where stale parent references would
+     * otherwise leave dependent locales returning the old English value.
+     */
     @Test
     public void testFallbackChangesForUntypedMessages() throws RepositoryException {
-        // Message loading also supports entries without the sling:MessageEntry type.
         Node message = enRoot.addNode("fallback", "nt:unstructured");
         message.setProperty("sling:key", MSG_KEY2);
         message.setProperty("sling:message", "old English fallback");

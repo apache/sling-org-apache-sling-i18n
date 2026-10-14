@@ -24,6 +24,11 @@ import org.ops4j.pax.exam.OptionUtils;
 
 import static org.ops4j.pax.exam.cm.ConfigurationAdminOptions.newConfiguration;
 
+/**
+ * Runs the inherited repository-backed tests with eager preloading enabled,
+ * complementing the default lazy-loading suite. In particular, targeted fallback
+ * updates must rebuild dependent bundles against their refreshed parents.
+ */
 public class EagerResourceBundleProviderIT extends ResourceBundleProviderIT {
 
     @Override
