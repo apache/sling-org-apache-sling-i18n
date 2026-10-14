@@ -341,7 +341,8 @@ public class ConcurrentJcrResourceBundleLoadingTest {
     }
 
     /**
-     * Verify that no exception occurs if requests come in during deactivate
+     * Pauses a lookup before repository loading, then deactivates the provider.
+     * The lookup may complete, but neither it nor a later lookup may leave a service registered.
      */
     @Test
     public void loadBundlesDuringDeactivateRace() throws Exception {
@@ -370,11 +371,19 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         }
     }
 
+    /**
+     * Deactivates while a new service's registration callback is blocked, before
+     * registry publication. The completed lookup must leave no registered service.
+     */
     @Test
     public void registrationDuringDeactivateDoesNotLeaveServices() throws Exception {
         assertRegistrationDuringDeactivate(false);
     }
 
+    /**
+     * Deactivates while a replacement's registration callback is blocked.
+     * Both the original and replacement services must be unregistered exactly once.
+     */
     @Test
     public void replacementDuringDeactivateDoesNotLeaveServices() throws Exception {
         assertRegistrationDuringDeactivate(true);
@@ -420,6 +429,10 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         }
     }
 
+    /**
+     * Triggers deactivation synchronously from a registration listener.
+     * Reentrant closure must prevent the returning registration from leaking a service.
+     */
     @Test
     public void deactivateFromRegistrationCallbackDoesNotLeaveServices() throws Exception {
         ServiceListener listener = event -> {
@@ -436,6 +449,10 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         }
     }
 
+    /**
+     * Pauses retirement of the original service while deactivation cleans up the
+     * registry. Overlapping reload and shutdown must unregister each service exactly once.
+     */
     @Test
     public void replacementRetirementDuringDeactivateUnregistersEachServiceOnce() throws Exception {
         provider.getResourceBundle(Locale.ENGLISH);
