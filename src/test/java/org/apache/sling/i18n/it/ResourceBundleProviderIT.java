@@ -176,6 +176,20 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
     }
 
     @Test
+    public void testFallbackChangesForUntypedMessages() throws RepositoryException {
+        // Message loading also supports entries without the sling:MessageEntry type.
+        Node message = enRoot.addNode("fallback", "nt:unstructured");
+        message.setProperty("sling:key", MSG_KEY2);
+        message.setProperty("sling:message", "old English fallback");
+        session.save();
+        assertMessages(MSG_KEY2, "old English fallback", "old English fallback", "old English fallback");
+
+        message.setProperty("sling:message", "new English fallback");
+        session.save();
+        assertMessages(MSG_KEY2, "new English fallback", "new English fallback", "new English fallback");
+    }
+
+    @Test
     public void testChangesDetection() throws RepositoryException {
         // set a key which is only available in the en dictionary
         setMessage(enRoot, MSG_KEY2, "EN_message");
