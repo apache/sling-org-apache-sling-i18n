@@ -407,13 +407,13 @@ public class JcrResourceBundleProvider
                 }
             }
         }
-        for (JcrResourceBundle dependentBundle : dependentBundles) {
-            reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()));
-        }
-
         if (this.preloadBundles && !resourceBundleRegistry.isClosed()) {
             // reload the bundle from the repository (will also fill cache and register as a service)
             getResourceBundleInternal(null, key.baseName, key.locale, true);
+        }
+
+        for (JcrResourceBundle dependentBundle : dependentBundles) {
+            reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()));
         }
     }
 
