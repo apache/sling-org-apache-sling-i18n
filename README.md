@@ -8,3 +8,11 @@ This module is part of the [Apache Sling](https://sling.apache.org) project.
 
 Support for creating Java I18N ResourceBundles from repository
 resources.
+
+## Dictionary updates
+
+When `preload.bundles` is enabled, an individual bundle refresh reloads parents
+before their dependent locales so that refreshed bundles use current fallback
+translations. With preloading disabled, affected bundles are invalidated and
+loaded on demand. Existing bundle objects remain snapshots; callers should
+request a bundle again to obtain refreshed translations.

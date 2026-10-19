@@ -35,6 +35,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.sling.api.resource.ModifiableValueMap;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.commons.scheduler.ScheduleOptions;
 import org.apache.sling.commons.scheduler.Scheduler;
 import org.apache.sling.i18n.impl.JcrResourceBundleProvider.Key;
@@ -46,6 +50,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.Mockito;
+import org.osgi.framework.Constants;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -56,8 +61,8 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 
 /**
- * Test case to verify that each bundle is only loaded once, even
- * if concurrent requests for the same bundle are made.
+ * Verifies bundle caching, concurrent loading, and refreshed fallback chains
+ * with both eager preloading and lazy invalidation.
  */
 @RunWith(Parameterized.class)
 public class ConcurrentJcrResourceBundleLoadingTest {
@@ -74,9 +79,18 @@ public class ConcurrentJcrResourceBundleLoadingTest {
     public Boolean preload = Boolean.FALSE;
 
     private JcrResourceBundleProvider provider;
+    private final List<Resource> dictionaryRoots = new ArrayList<>();
 
     @Before
     public void setup() throws Exception {
+        ResourceResolver resolver = Mockito.spy(context.resourceResolver());
+        Mockito.doNothing().when(resolver).close();
+        Mockito.doAnswer(query -> dictionaryRoots.iterator())
+                .when(resolver)
+                .findResources(JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
+        ResourceResolverFactory resolverFactory = Mockito.mock(ResourceResolverFactory.class);
+        Mockito.when(resolverFactory.getServiceResourceResolver(null)).thenReturn(resolver);
+        context.registerService(ResourceResolverFactory.class, resolverFactory, Constants.SERVICE_RANKING, 1000);
         // mock other required services
         Scheduler mockScheduler = context.registerService(Scheduler.class, Mockito.mock(Scheduler.class));
         // mock this call to avoid a NPE during activation
@@ -143,6 +157,10 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertEquals(1, germanSet.size());
     }
 
+    /**
+     * Reloading a child must preserve its unchanged parent, both in the cache
+     * and in the child's fallback reference.
+     */
     @Test
     public void newBundleUsedAfterReload() throws Exception {
         ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
@@ -153,12 +171,108 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
         ResourceBundle german2 = provider.getResourceBundle(Locale.GERMAN);
         assertNotSame(german2, german);
+        assertSame(english, ((JcrResourceBundle) german2).getParent());
         assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
         assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
         assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
         assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
     }
 
+    /**
+     * Changes an English fallback shared by the de -> en, de_DE -> de -> en,
+     * and fr -> en chains. Refreshed children must reference the current parents
+     * and return the new fallback while retaining locale-specific overrides.
+     * An explicitly unnamed reload must leave the named bundle chain untouched.
+     */
+    @Test
+    public void reloadedFallbacksUseCurrentParents() {
+        Resource englishDictionary = createDictionary("en", "en");
+        Resource fallback =
+                context.create().resource(englishDictionary.getPath() + "/fallback", "sling:message", "old English");
+        Resource germanDictionary = createDictionary("de", "de");
+        context.create().resource(germanDictionary.getPath() + "/override", "sling:message", "German override");
+        Resource countryDictionary = createDictionary("de_DE", "de_DE");
+        context.create().resource(countryDictionary.getPath() + "/override", "sling:message", "Country override");
+        Resource namedDictionary = createDictionary("named-en", "en", "named");
+        context.create().resource(namedDictionary.getPath() + "/named", "sling:message", "Named English");
+
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        ResourceBundle german = provider.getResourceBundle(Locale.GERMAN);
+        ResourceBundle country = provider.getResourceBundle(Locale.GERMANY);
+        ResourceBundle french = provider.getResourceBundle(Locale.FRENCH);
+        ResourceBundle named = provider.getResourceBundle("named", Locale.GERMANY);
+        assertEquals("old English", country.getString("fallback"));
+        assertEquals("old English", french.getString("fallback"));
+
+        fallback.adaptTo(ModifiableValueMap.class).put("sling:message", "new English");
+        provider.reloadBundle(new Key(null, Locale.ENGLISH));
+
+        ResourceBundle english2 = provider.getResourceBundle(Locale.ENGLISH);
+        ResourceBundle german2 = provider.getResourceBundle(Locale.GERMAN);
+        ResourceBundle country2 = provider.getResourceBundle(Locale.GERMANY);
+        ResourceBundle french2 = provider.getResourceBundle(Locale.FRENCH);
+        assertNotSame(english, english2);
+        assertNotSame(german, german2);
+        assertNotSame(country, country2);
+        assertNotSame(french, french2);
+        assertSame(english2, ((JcrResourceBundle) german2).getParent());
+        assertSame(german2, ((JcrResourceBundle) country2).getParent());
+        assertSame(english2, ((JcrResourceBundle) french2).getParent());
+        assertEquals("new English", country2.getString("fallback"));
+        assertEquals("new English", french2.getString("fallback"));
+        assertEquals("German override", german2.getString("override"));
+        assertEquals("Country override", country2.getString("override"));
+        assertSame(named, provider.getResourceBundle("named", Locale.GERMANY));
+        assertEquals("Named English", named.getString("named"));
+    }
+
+    /**
+     * Refreshes the named en -> de -> de_DE dependency chain and verifies its
+     * updated fallback value and parent references. Explicitly refreshing that
+     * basename must not replace the cached unnamed bundles.
+     */
+    @Test
+    public void namedFallbackRefreshDoesNotReplaceOtherBasenames() {
+        Resource dictionary = createDictionary("named-en", "en", "named");
+        Resource message =
+                context.create().resource(dictionary.getPath() + "/fallback", "sling:message", "old named English");
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        ResourceBundle german = provider.getResourceBundle(Locale.GERMAN);
+        ResourceBundle named = provider.getResourceBundle("named", Locale.GERMANY);
+        assertEquals("old named English", named.getString("fallback"));
+
+        message.adaptTo(ModifiableValueMap.class).put("sling:message", "new named English");
+        provider.reloadBundle(new Key("named", Locale.ENGLISH));
+
+        ResourceBundle named2 = provider.getResourceBundle("named", Locale.GERMANY);
+        JcrResourceBundle namedGerman = (JcrResourceBundle) provider.getResourceBundle("named", Locale.GERMAN);
+        assertNotSame(named, named2);
+        assertSame(namedGerman, ((JcrResourceBundle) named2).getParent());
+        assertSame(provider.getResourceBundle("named", Locale.ENGLISH), namedGerman.getParent());
+        assertEquals("new named English", named2.getString("fallback"));
+        assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
+        assertSame(german, provider.getResourceBundle(Locale.GERMAN));
+    }
+
+    private Resource createDictionary(String name, String language, String... baseNames) {
+        Resource dictionary = context.create()
+                .resource(
+                        "/apps/i18n/" + name,
+                        "jcr:mixinTypes",
+                        new String[] {"mix:language"},
+                        "jcr:language",
+                        language,
+                        "sling:basename",
+                        baseNames);
+        dictionaryRoots.add(dictionary);
+        return dictionary;
+    }
+
+    /**
+     * Replacing a parent must also replace its dependent child and attach the
+     * child to the new parent. New bundle identities alone would miss a stale
+     * parent reference left by child-first eager refresh.
+     */
     @Test
     public void newBundleUsedAsParentAfterReload() throws Exception {
         ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
@@ -170,6 +284,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         assertNotSame(english2, english);
         ResourceBundle german2 = provider.getResourceBundle(Locale.GERMAN);
         assertNotSame(german2, german);
+        assertSame(english2, ((JcrResourceBundle) german2).getParent());
         assertSame(english2, provider.getResourceBundle(Locale.ENGLISH));
         assertSame(german2, provider.getResourceBundle(Locale.GERMAN));
         assertSame(english2, provider.getResourceBundle(Locale.ENGLISH));
