@@ -19,13 +19,22 @@
 package org.apache.sling.i18n.it;
 
 import javax.inject.Inject;
+import javax.jcr.Binary;
 import javax.jcr.Node;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Dictionary;
+import java.util.Hashtable;
+import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.apache.sling.api.resource.observation.ResourceChange;
+import org.apache.sling.api.resource.observation.ResourceChangeListener;
 import org.apache.sling.i18n.ResourceBundleProvider;
 import org.apache.sling.jcr.api.SlingRepository;
 import org.junit.After;
@@ -35,9 +44,15 @@ import org.junit.runner.RunWith;
 import org.ops4j.pax.exam.junit.PaxExam;
 import org.ops4j.pax.exam.spi.reactors.ExamReactorStrategy;
 import org.ops4j.pax.exam.spi.reactors.PerClass;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.ServiceRegistration;
+import org.osgi.util.tracker.ServiceTracker;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 @RunWith(PaxExam.class)
@@ -55,7 +70,9 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
     private SlingRepository repository;
 
     @Inject
-    private ResourceBundleProvider resourceBundleProvider;
+    private BundleContext bundleContext;
+
+    private ServiceTracker<ResourceBundleProvider, ResourceBundleProvider> providerTracker;
 
     private Session session;
     private Node i18nRoot;
@@ -89,6 +106,9 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
 
     @Before
     public void setup() throws RepositoryException {
+        // Startup configuration can replace the service after Pax Exam injects test fields.
+        providerTracker = new ServiceTracker<>(bundleContext, ResourceBundleProvider.class, null);
+        providerTracker.open();
         session = repository.loginAdministrative(null);
         final Node root = session.getRootNode();
         final Node libs;
@@ -111,6 +131,13 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
         i18nRoot.remove();
         session.save();
         session.logout();
+        providerTracker.close();
+    }
+
+    private ResourceBundleProvider getProvider() {
+        ResourceBundleProvider provider = providerTracker.getService();
+        assertNotNull("No active ResourceBundleProvider service", provider);
+        return provider;
     }
 
     private Node addLanguageNode(Node parent, String language) throws RepositoryException {
@@ -135,8 +162,8 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
             @Override
             protected void exec() {
                 {
-                    final ResourceBundle resourceBundle = resourceBundleProvider.getResourceBundle(
-                            basename, locale); // this is the resource bundle for de_DE
+                    final ResourceBundle resourceBundle =
+                            getProvider().getResourceBundle(basename, locale); // this is the resource bundle for de_DE
                     assertNotNull(resourceBundle);
                     assertEquals(value, resourceBundle.getString(key));
                 }
@@ -179,7 +206,7 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
      * Verifies that repository observation propagates an English fallback update
      * to German, German-country, and French bundles after they have been cached.
      * The nt:unstructured entry is supported by message loading but avoids the
-     * sling:MessageEntry detection that promotes edits to full rediscovery.
+     * sling:MessageEntry detection, covering untyped entries as well.
      * This exercises targeted refresh, where stale parent references would
      * otherwise leave dependent locales returning the old English value.
      */
@@ -196,6 +223,11 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
         assertMessages(MSG_KEY2, "new English fallback", "new English fallback", "new English fallback");
     }
 
+    /**
+     * Exercises repository observation for locale-specific entries, shared English fallbacks,
+     * and named dictionaries. Isolated German entry additions, edits, removals, and message-mixin
+     * additions must update German and country bundles without replacing English, French, or unrelated named bundles.
+     */
     @Test
     public void testChangesDetection() throws RepositoryException {
         // set a key which is only available in the en dictionary
@@ -237,5 +269,126 @@ public class ResourceBundleProviderIT extends I18nTestSupport {
         session.save();
         assertMessage(MSG_KEY3, Locale.ENGLISH, null, "EN_basename_changed");
         assertMessage(MSG_KEY3, Locale.ENGLISH, BASENAME, "EN_basename_changed");
+
+        // Wait for the preceding fallback refresh to reach cached children before checking isolation.
+        assertMessages(MSG_KEY3, "EN_basename_changed", "EN_basename_changed", "EN_basename_changed");
+        ResourceBundle english = getProvider().getResourceBundle(Locale.ENGLISH);
+        ResourceBundle french = getProvider().getResourceBundle(Locale.FRENCH);
+        ResourceBundle named = getProvider().getResourceBundle(BASENAME, Locale.GERMAN);
+        ResourceBundle german = getProvider().getResourceBundle(Locale.GERMAN);
+        ResourceBundle country = getProvider().getResourceBundle(Locale.GERMANY);
+
+        final String isolatedKey = "isolated";
+        setMessage(deRoot, isolatedKey, "DE_added");
+        session.save();
+        assertMessages(isolatedKey, "DE_added", "DE_added", isolatedKey);
+        assertNotSame(german, getProvider().getResourceBundle(Locale.GERMAN));
+        assertNotSame(country, getProvider().getResourceBundle(Locale.GERMANY));
+        assertSame(english, getProvider().getResourceBundle(Locale.ENGLISH));
+        assertSame(french, getProvider().getResourceBundle(Locale.FRENCH));
+        assertSame(named, getProvider().getResourceBundle(BASENAME, Locale.GERMAN));
+
+        // A property change on an existing sling:MessageEntry must not rediscover every dictionary.
+        setMessage(deRoot, isolatedKey, "DE_changed");
+        session.save();
+        assertMessages(isolatedKey, "DE_changed", "DE_changed", isolatedKey);
+        assertSame(english, getProvider().getResourceBundle(Locale.ENGLISH));
+        assertSame(french, getProvider().getResourceBundle(Locale.FRENCH));
+        assertSame(named, getProvider().getResourceBundle(BASENAME, Locale.GERMAN));
+
+        deRoot.getNode("node_" + isolatedKey).remove();
+        session.save();
+        assertMessages(isolatedKey, isolatedKey, isolatedKey, isolatedKey);
+        assertSame(english, getProvider().getResourceBundle(Locale.ENGLISH));
+        assertSame(french, getProvider().getResourceBundle(Locale.FRENCH));
+        assertSame(named, getProvider().getResourceBundle(BASENAME, Locale.GERMAN));
+
+        // Re-add the entry using the supported message mixin instead of its primary type.
+        Node mixedMessage = deRoot.addNode("node_" + isolatedKey, "nt:unstructured");
+        mixedMessage.addMixin("sling:Message");
+        mixedMessage.setProperty("sling:key", isolatedKey);
+        mixedMessage.setProperty("sling:message", "DE_mixin");
+        session.save();
+        assertMessages(isolatedKey, "DE_mixin", "DE_mixin", isolatedKey);
+        assertSame(english, getProvider().getResourceBundle(Locale.ENGLISH));
+        assertSame(french, getProvider().getResourceBundle(Locale.FRENCH));
+        assertSame(named, getProvider().getResourceBundle(BASENAME, Locale.GERMAN));
+    }
+
+    /**
+     * Verifies JSON dictionary discovery, content updates, locale reassignment, and removal
+     * against real repository events. JCR reports nt:file content updates at the dictionary
+     * root, so these events deliberately retain full refreshes rather than targeted content-child refreshes.
+     */
+    @Test
+    public void testJsonChangesDetection() throws RepositoryException {
+        final String key = "json-label";
+        assertMessages(key, key, key, key);
+        Node dictionary = i18nRoot.addNode("de.json", "nt:file");
+        dictionary.addMixin("mix:language");
+        dictionary.setProperty("jcr:language", "de");
+        Node content = dictionary.addNode("jcr:content", "nt:resource");
+        content.setProperty("jcr:mimeType", "application/json");
+        setJsonMessage(content, key, "Original");
+        session.save();
+        assertMessages(key, "Original", "Original", key);
+
+        ResourceBundle english = getProvider().getResourceBundle(Locale.ENGLISH);
+        ResourceBundle french = getProvider().getResourceBundle(Locale.FRENCH);
+        ResourceBundle named = getProvider().getResourceBundle(BASENAME, Locale.GERMAN);
+        List<ResourceChange> observed = new CopyOnWriteArrayList<>();
+        Dictionary<String, Object> properties = new Hashtable<>();
+        final String dictionaryPath = dictionary.getPath();
+        properties.put(ResourceChangeListener.PATHS, dictionaryPath);
+        ServiceRegistration<ResourceChangeListener> listener =
+                bundleContext.registerService(ResourceChangeListener.class, observed::addAll, properties);
+        try {
+            setJsonMessage(content, key, "Changed");
+            session.save();
+            assertMessages(key, "Changed", "Changed", key);
+            // The JCR provider rolls nt:file content updates up to the root, retaining full refreshes.
+            new Retry(RETRY_TIMEOUT_MSEC) {
+                @Override
+                protected void exec() {
+                    assertTrue(observed.stream()
+                            .anyMatch(change -> change.getType() == ResourceChange.ChangeType.CHANGED
+                                    && change.getPath().equals(dictionaryPath)));
+                }
+            };
+            assertNotSame(english, getProvider().getResourceBundle(Locale.ENGLISH));
+            assertNotSame(french, getProvider().getResourceBundle(Locale.FRENCH));
+            assertNotSame(named, getProvider().getResourceBundle(BASENAME, Locale.GERMAN));
+        } finally {
+            listener.unregister();
+        }
+
+        english = getProvider().getResourceBundle(Locale.ENGLISH);
+        french = getProvider().getResourceBundle(Locale.FRENCH);
+        assertMessage(key, Locale.ITALIAN, null, key);
+        dictionary.setProperty("jcr:language", "it");
+        session.save();
+        assertMessages(key, key, key, key);
+        assertMessage(key, Locale.ITALIAN, null, "Changed");
+        assertNotSame(english, getProvider().getResourceBundle(Locale.ENGLISH));
+        assertNotSame(french, getProvider().getResourceBundle(Locale.FRENCH));
+
+        english = getProvider().getResourceBundle(Locale.ENGLISH);
+        french = getProvider().getResourceBundle(Locale.FRENCH);
+        dictionary.remove();
+        session.save();
+        assertMessages(key, key, key, key);
+        assertMessage(key, Locale.ITALIAN, null, key);
+        assertNotSame(english, getProvider().getResourceBundle(Locale.ENGLISH));
+        assertNotSame(french, getProvider().getResourceBundle(Locale.FRENCH));
+    }
+
+    private void setJsonMessage(Node content, String key, String message) throws RepositoryException {
+        byte[] json = ("{\"" + key + "\":\"" + message + "\"}").getBytes(StandardCharsets.UTF_8);
+        Binary binary = session.getValueFactory().createBinary(new ByteArrayInputStream(json));
+        try {
+            content.setProperty("jcr:data", binary);
+        } finally {
+            binary.dispose();
+        }
     }
 }
