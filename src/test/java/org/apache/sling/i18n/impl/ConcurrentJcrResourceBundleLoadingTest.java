@@ -59,7 +59,6 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 
 /**
  * Verifies bundle caching, concurrent loading, and refreshed fallback chains
@@ -88,7 +87,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         Mockito.doNothing().when(resolver).close();
         Mockito.doAnswer(query -> dictionaryRoots.iterator())
                 .when(resolver)
-                .findResources(eq(JcrResourceBundle.QUERY_LANGUAGE_ROOTS), eq("xpath"));
+                .findResources(JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
         ResourceResolverFactory resolverFactory = Mockito.mock(ResourceResolverFactory.class);
         Mockito.when(resolverFactory.getServiceResourceResolver(null)).thenReturn(resolver);
         context.registerService(ResourceResolverFactory.class, resolverFactory, Constants.SERVICE_RANKING, 1000);
