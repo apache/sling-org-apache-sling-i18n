@@ -20,6 +20,7 @@ package org.apache.sling.i18n.impl;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -32,6 +33,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -51,12 +53,15 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.Mockito;
 import org.osgi.framework.Constants;
+import org.osgi.framework.ServiceEvent;
+import org.osgi.framework.ServiceListener;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 
@@ -79,6 +84,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
     public Boolean preload = Boolean.FALSE;
 
     private JcrResourceBundleProvider provider;
+    private ResourceResolverFactory resolverFactory;
     private final List<Resource> dictionaryRoots = new ArrayList<>();
 
     @Before
@@ -88,7 +94,7 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         Mockito.doAnswer(query -> dictionaryRoots.iterator())
                 .when(resolver)
                 .findResources(JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
-        ResourceResolverFactory resolverFactory = Mockito.mock(ResourceResolverFactory.class);
+        resolverFactory = Mockito.mock(ResourceResolverFactory.class);
         Mockito.when(resolverFactory.getServiceResourceResolver(null)).thenReturn(resolver);
         context.registerService(ResourceResolverFactory.class, resolverFactory, Constants.SERVICE_RANKING, 1000);
         // mock other required services
@@ -335,12 +341,169 @@ public class ConcurrentJcrResourceBundleLoadingTest {
     }
 
     /**
-     * Verify that no exception occurs if requests come in during deactivate
+     * Pauses a lookup before repository loading, then deactivates the provider.
+     * The lookup may complete, but neither it nor a later lookup may leave a service registered.
      */
     @Test
-    public void loadBundlesDuringDeactivateRace() {
-        provider.deactivate();
-        assertNotNull(provider.getResourceBundle(Locale.ENGLISH));
+    public void loadBundlesDuringDeactivateRace() throws Exception {
+        CountDownLatch loading = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        ResourceResolver resolver = resolverFactory.getServiceResourceResolver(null);
+        Mockito.when(resolverFactory.getServiceResourceResolver(null)).thenAnswer(invocation -> {
+            loading.countDown();
+            await(resume);
+            return resolver;
+        });
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<ResourceBundle> lookup = executor.submit(() -> provider.getResourceBundle(Locale.ENGLISH));
+            assertTrue(loading.await(10, TimeUnit.SECONDS));
+            provider.deactivate();
+            assertNoResourceBundleServices();
+            resume.countDown();
+            assertNotNull(lookup.get(10, TimeUnit.SECONDS));
+            assertNotNull(provider.getResourceBundle(Locale.ENGLISH));
+            assertNoResourceBundleServices();
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    /**
+     * Deactivates while a new service's registration callback is blocked, before
+     * registry publication. The completed lookup must leave no registered service.
+     */
+    @Test
+    public void registrationDuringDeactivateDoesNotLeaveServices() throws Exception {
+        assertRegistrationDuringDeactivate(false);
+    }
+
+    /**
+     * Deactivates while a replacement's registration callback is blocked.
+     * Both the original and replacement services must be unregistered exactly once.
+     */
+    @Test
+    public void replacementDuringDeactivateDoesNotLeaveServices() throws Exception {
+        assertRegistrationDuringDeactivate(true);
+    }
+
+    private void assertRegistrationDuringDeactivate(boolean replacement) throws Exception {
+        if (replacement) {
+            provider.getResourceBundle(Locale.ENGLISH);
+        }
+        CountDownLatch registering = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        Map<Long, Integer> unregistrations = new ConcurrentHashMap<>();
+        ServiceListener listener = event -> {
+            Long serviceId = (Long) event.getServiceReference().getProperty(Constants.SERVICE_ID);
+            if (event.getType() == ServiceEvent.REGISTERED) {
+                registering.countDown();
+                await(resume);
+            } else if (event.getType() == ServiceEvent.UNREGISTERING) {
+                unregistrations.merge(serviceId, 1, Integer::sum);
+            }
+        };
+        context.bundleContext().addServiceListener(listener, "(&(objectClass=java.util.ResourceBundle)(locale=en))");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<ResourceBundle> lookup = executor.submit(() -> {
+                if (replacement) {
+                    provider.reloadBundle(new Key(null, Locale.ENGLISH));
+                }
+                return provider.getResourceBundle(Locale.ENGLISH);
+            });
+            assertTrue(registering.await(10, TimeUnit.SECONDS));
+            provider.deactivate();
+            resume.countDown();
+            assertNotNull(lookup.get(10, TimeUnit.SECONDS));
+            assertNoResourceBundleServices();
+            assertEquals(replacement ? 2 : 1, unregistrations.size());
+            unregistrations.values().forEach(count -> assertEquals(Integer.valueOf(1), count));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            context.bundleContext().removeServiceListener(listener);
+        }
+    }
+
+    /**
+     * Triggers deactivation synchronously from a registration listener.
+     * Reentrant closure must prevent the returning registration from leaking a service.
+     */
+    @Test
+    public void deactivateFromRegistrationCallbackDoesNotLeaveServices() throws Exception {
+        ServiceListener listener = event -> {
+            if (event.getType() == ServiceEvent.REGISTERED) {
+                provider.deactivate();
+            }
+        };
+        context.bundleContext().addServiceListener(listener, "(objectClass=java.util.ResourceBundle)");
+        try {
+            assertNotNull(provider.getResourceBundle(Locale.ENGLISH));
+            assertNoResourceBundleServices();
+        } finally {
+            context.bundleContext().removeServiceListener(listener);
+        }
+    }
+
+    /**
+     * Pauses retirement of the original service while deactivation cleans up the
+     * registry. Overlapping reload and shutdown must unregister each service exactly once.
+     */
+    @Test
+    public void replacementRetirementDuringDeactivateUnregistersEachServiceOnce() throws Exception {
+        provider.getResourceBundle(Locale.ENGLISH);
+        Long originalId = (Long) context.bundleContext()
+                .getServiceReference(ResourceBundle.class)
+                .getProperty(Constants.SERVICE_ID);
+        CountDownLatch retiring = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        Map<Long, Integer> unregistrations = new ConcurrentHashMap<>();
+        ServiceListener listener = event -> {
+            if (event.getType() == ServiceEvent.UNREGISTERING) {
+                Long serviceId = (Long) event.getServiceReference().getProperty(Constants.SERVICE_ID);
+                unregistrations.merge(serviceId, 1, Integer::sum);
+                if (originalId.equals(serviceId)) {
+                    retiring.countDown();
+                    await(resume);
+                }
+            }
+        };
+        context.bundleContext().addServiceListener(listener, "(objectClass=java.util.ResourceBundle)");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> reload = executor.submit(() -> provider.reloadBundle(new Key(null, Locale.ENGLISH)));
+            assertTrue(retiring.await(10, TimeUnit.SECONDS));
+            provider.deactivate();
+            resume.countDown();
+            reload.get(10, TimeUnit.SECONDS);
+            assertNoResourceBundleServices();
+            assertEquals(preload ? 2 : 1, unregistrations.size());
+            unregistrations.values().forEach(count -> assertEquals(Integer.valueOf(1), count));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            context.bundleContext().removeServiceListener(listener);
+        }
+    }
+
+    private void assertNoResourceBundleServices() throws Exception {
+        assertTrue(context.bundleContext()
+                .getServiceReferences(ResourceBundle.class, null)
+                .isEmpty());
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(10, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while waiting for the test gate", e);
+        }
     }
 
     /**
@@ -366,15 +529,17 @@ public class ConcurrentJcrResourceBundleLoadingTest {
         // Use a barrier to start the execution of all the threads simultaneously once they are all ready
         final CyclicBarrier barrier = new CyclicBarrier(numberOfThreads);
         final ExecutorService pool = Executors.newFixedThreadPool(numberOfThreads);
+        final List<Future<?>> tasks = new ArrayList<>();
         for (int i = 0; i < numberOfThreads; i++) {
-            pool.submit(new Runnable() {
+            tasks.add(pool.submit(new Runnable() {
                 @Override
                 public void run() {
                     try {
                         barrier.await();
                         for (Locale locale : testLocales) {
                             ResourceBundle rb = provider.getResourceBundle(locale);
-                            List<ResourceBundle> rbList = rbLists.computeIfAbsent(locale, key -> new ArrayList<>());
+                            List<ResourceBundle> rbList = rbLists.computeIfAbsent(
+                                    locale, key -> Collections.synchronizedList(new ArrayList<>()));
                             rbList.add(rb);
                         }
                         // trigger registry clearing and service deregistration
@@ -383,10 +548,18 @@ public class ConcurrentJcrResourceBundleLoadingTest {
                         throw new RuntimeException(e);
                     }
                 }
-            });
+            }));
         }
         pool.shutdown();
-        pool.awaitTermination(5, TimeUnit.SECONDS);
+        try {
+            for (Future<?> task : tasks) {
+                task.get(10, TimeUnit.SECONDS);
+            }
+            assertNoResourceBundleServices();
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS));
+        }
 
         // getResourceBundle should return a new ResourceBundle instance,
         // not one that might be left in the cache by an incomplete clearing

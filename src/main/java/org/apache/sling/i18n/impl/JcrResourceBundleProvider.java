@@ -889,6 +889,7 @@ public class JcrResourceBundleProvider
      * Registry of the loaded <code>resource bundles</code> and the associated <code>service registrations</code>
      * The <code>ResourceBundleRegistry</code> takes care of the registration/deregistration of the resource bundles as OSGi services.
      * It stores the references to the registered resource bundles and to the associated service registrations.
+     * Publication and removal are coordinated with closure; OSGi registration callbacks run outside the registry monitor.
      */
     private static class ResourceBundleRegistry implements AutoCloseable {
         private final Logger log = LoggerFactory.getLogger(getClass());
@@ -928,7 +929,17 @@ public class JcrResourceBundleProvider
             }
             ServiceRegistration<ResourceBundle> serviceReg =
                     bundleContext.registerService(ResourceBundle.class, resourceBundle, serviceProps(key));
-            Entry oldEntry = registrations.get().put(key, new Entry(resourceBundle, serviceReg));
+            final Entry oldEntry;
+            final boolean published;
+            synchronized (this) {
+                published = !closed.get();
+                oldEntry = published ? registrations.get().put(key, new Entry(resourceBundle, serviceReg)) : null;
+            }
+            // Registration callbacks can close the registry before publication.
+            if (!published) {
+                serviceReg.unregister();
+                return;
+            }
             if (oldEntry != null) {
                 oldEntry.serviceRegistration.unregister();
             }
@@ -948,10 +959,13 @@ public class JcrResourceBundleProvider
         }
 
         void unregisterResourceBundle(Key key) {
-            if (closed.get()) {
-                return;
+            final Entry oldEntry;
+            synchronized (this) {
+                if (closed.get()) {
+                    return;
+                }
+                oldEntry = registrations.get().remove(key);
             }
-            Entry oldEntry = registrations.get().remove(key);
             if (oldEntry != null) {
                 oldEntry.serviceRegistration.unregister();
             } else {
@@ -962,18 +976,24 @@ public class JcrResourceBundleProvider
         }
 
         void unregisterAll() {
-            if (closed.get()) {
-                return;
-            }
-            unregisterAllInternal();
+            unregisterAllInternal(false);
         }
 
-        private void unregisterAllInternal() {
-            log.debug(
-                    "[ResourceBundleRegistry.clearInternal] Before - Nr of Keys: {} - Keys: {}",
-                    registrations.get().size(),
-                    registrations.get().keySet());
-            ConcurrentHashMap<Key, Entry> oldServiceReg = registrations.getAndSet(new ConcurrentHashMap<>());
+        private void unregisterAllInternal(boolean closing) {
+            final ConcurrentHashMap<Key, Entry> oldServiceReg;
+            synchronized (this) {
+                if (closed.get()) {
+                    return;
+                }
+                if (closing) {
+                    closed.set(true);
+                }
+                log.debug(
+                        "[ResourceBundleRegistry.clearInternal] Before - Nr of Keys: {} - Keys: {}",
+                        registrations.get().size(),
+                        registrations.get().keySet());
+                oldServiceReg = registrations.getAndSet(new ConcurrentHashMap<>());
+            }
             for (Entry entry : oldServiceReg.values()) {
                 entry.serviceRegistration.unregister();
             }
@@ -989,9 +1009,7 @@ public class JcrResourceBundleProvider
 
         @Override
         public void close() {
-            if (closed.compareAndSet(false, true)) {
-                unregisterAllInternal();
-            }
+            unregisterAllInternal(true);
         }
     }
 }
