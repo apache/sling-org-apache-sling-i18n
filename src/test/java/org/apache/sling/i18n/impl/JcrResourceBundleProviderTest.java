@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.stream.Collectors;
 
+import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ModifiableValueMap;
 import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
@@ -80,6 +81,7 @@ public class JcrResourceBundleProviderTest {
     public boolean preload;
 
     private JcrResourceBundleProvider provider;
+    private ResourceResolverFactory factory;
     private final List<String> dictionaryPaths = new ArrayList<>();
     private final Map<String, Runnable> scheduledJobs = new LinkedHashMap<>();
     private String scheduledJobName;
@@ -104,7 +106,7 @@ public class JcrResourceBundleProviderTest {
                         .iterator())
                 .when(resolver)
                 .queryResources(JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
-        ResourceResolverFactory factory = Mockito.mock(ResourceResolverFactory.class);
+        factory = Mockito.mock(ResourceResolverFactory.class);
         Mockito.when(factory.getServiceResourceResolver(null)).thenReturn(resolver);
         context.registerService(ResourceResolverFactory.class, factory, Constants.SERVICE_RANKING, 1000);
         context.registerService(ServiceUserMapped.class, Mockito.mock(ServiceUserMapped.class));
@@ -265,6 +267,49 @@ public class JcrResourceBundleProviderTest {
         assertTargetedChange(entry.getPath(), ChangeType.CHANGED, "Changed", (String) null);
         context.resourceResolver().delete(entry);
         assertTargetedChange(entry.getPath(), ChangeType.REMOVED, "English", (String) null);
+    }
+
+    @Test
+    public void entryRemovalSchedulesRefreshWithoutResolverLogin() throws Exception {
+        setupObservation();
+        Resource entry = createEntry("/apps/i18n/de/" + KEY, JcrResourceBundle.RT_MESSAGE_ENTRY, "German");
+        assertTargetedChange(entry.getPath(), ChangeType.ADDED, "German", (String) null);
+        context.resourceResolver().delete(entry);
+        ResourceResolver resolver = factory.getServiceResourceResolver(null);
+        Mockito.when(factory.getServiceResourceResolver(null)).thenThrow(new LoginException("Temporarily unavailable"));
+        Mockito.clearInvocations(factory);
+
+        provider.onChange(Collections.singletonList(new ResourceChange(ChangeType.REMOVED, entry.getPath(), false)));
+
+        Mockito.verifyNoInteractions(factory);
+        assertEquals(1, scheduledJobs.size());
+        assertFalse(scheduledJobs.containsKey(RELOAD_ALL));
+        Mockito.doReturn(resolver).when(factory).getServiceResourceResolver(null);
+        runScheduledWork();
+        assertEquals("English", provider.getResourceBundle(Locale.GERMAN).getString(KEY));
+        assertEquals("English", provider.getResourceBundle(Locale.GERMANY).getString(KEY));
+    }
+
+    @Test
+    public void removalDoesNotUseResolverOpenedForEarlierEvent() throws Exception {
+        setupObservation();
+        Resource entry = createEntry("/apps/i18n/de/" + KEY, JcrResourceBundle.RT_MESSAGE_ENTRY, "German");
+        assertTargetedChange(entry.getPath(), ChangeType.ADDED, "German", (String) null);
+        ResourceResolver resolver = factory.getServiceResourceResolver(null);
+        String removedPath = "/apps/i18n/de/removed";
+        entry.adaptTo(ModifiableValueMap.class).put("sling:message", "Changed");
+        Mockito.clearInvocations(resolver);
+
+        provider.onChange(Arrays.asList(
+                new ResourceChange(ChangeType.CHANGED, entry.getPath(), false),
+                new ResourceChange(ChangeType.REMOVED, removedPath, false)));
+
+        Mockito.verify(resolver).getResource(entry.getPath());
+        Mockito.verify(resolver, Mockito.never()).getResource(removedPath);
+        assertEquals(1, scheduledJobs.size());
+        assertFalse(scheduledJobs.containsKey(RELOAD_ALL));
+        runScheduledWork();
+        assertEquals("Changed", provider.getResourceBundle(Locale.GERMANY).getString(KEY));
     }
 
     /**

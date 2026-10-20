@@ -285,10 +285,16 @@ public class JcrResourceBundleProvider
                 }
             }
 
+            // Removal handling only needs the path-based classification above.
+            if (change.getType() == ResourceChange.ChangeType.REMOVED) {
+                return;
+            }
+
             if (status.resourceResolver == null) {
                 status.resourceResolver = createResourceResolver();
             }
             final Resource resource = status.resourceResolver.getResource(change.getPath());
+            // An added or changed resource may have been removed before this event is processed.
             if (resource == null) {
                 log.trace("Could not get resource for '{}' for event {}", change.getPath(), change.getType());
                 return;
