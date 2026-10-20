@@ -285,64 +285,55 @@ public class JcrResourceBundleProvider
                 }
             }
 
-            // may be a completely new dictionary
             if (status.resourceResolver == null) {
                 status.resourceResolver = createResourceResolver();
             }
-            if (requiresDictionaryRediscovery(status.resourceResolver, change, withinKnownDictionary)) {
+            final Resource resource = status.resourceResolver.getResource(change.getPath());
+            if (resource == null) {
+                log.trace("Could not get resource for '{}' for event {}", change.getPath(), change.getType());
+                return;
+            }
+
+            // A new language root can introduce another locale or basename, even inside a known dictionary.
+            if (isDictionaryRoot(resource)) {
+                log.debug("Found dictionary root change at '{}', requiring a full reload", change.getPath());
+                status.reloadAll = true;
+                return;
+            }
+
+            // An entry outside known roots may reveal another dictionary. Entries inside known dictionaries
+            // are already covered by the targeted refreshes collected above.
+            if (!withinKnownDictionary && isMessageEntry(resource)) {
                 status.reloadAll = true;
             }
         }
     }
 
     /**
-     * Checks whether the changed resource requires dictionary rediscovery and a full reload,
-     * rather than a targeted entry refresh.
-     *
-     * <p>Resources with {@code mix:language} and {@code jcr:language} require rediscovery,
-     * including new roots nested inside known dictionaries and JSON dictionary roots.
-     * {@code sling:MessageEntry} resources and resources with the {@code sling:Message}
-     * mixin require rediscovery only outside known dictionaries. Inside known dictionaries,
-     * the caller already collects the affected bundles for targeted refresh.
-     *
-     * <p>The caller separately handles changes to known roots and removal of their ancestors.
-     * Missing resources return {@code false}; targeted invalidations already collected for
-     * entry removals are retained.
-     *
-     * @param resolver resolver used to inspect the current resource
-     * @param change the observed resource change
-     * @param withinKnownDictionary whether the changed path is below a known dictionary root
-     * @return {@code true} if the resource indicates that dictionaries must be rediscovered
+     * Identifies language-root metadata independently of whether the dictionary is already known.
      */
-    private boolean requiresDictionaryRediscovery(
-            final ResourceResolver resolver, final ResourceChange change, final boolean withinKnownDictionary) {
-        final Resource resource = resolver.getResource(change.getPath());
-        if (resource == null) {
-            log.trace("Could not get resource for '{}' for event {}", change.getPath(), change.getType());
-            return false;
-        }
+    private boolean isDictionaryRoot(final Resource resource) {
         final ValueMap valueMap = resource.getValueMap();
-        // A new language root can also be nested inside a known dictionary.
-        if (hasMixin(valueMap, JcrResourceBundle.MIXIN_LANGUAGE) && valueMap.containsKey(PROP_LANGUAGE)) {
-            log.debug("Found dictionary root change at '{}'", change.getPath());
-            return true;
-        }
-        if (withinKnownDictionary || resource.getResourceType() == null) {
-            return false;
-        }
+        return hasMixin(valueMap, JcrResourceBundle.MIXIN_LANGUAGE) && valueMap.containsKey(PROP_LANGUAGE);
+    }
+
+    /**
+     * Recognizes message entries by their resource type or message mixin, without inferring dictionary ownership.
+     */
+    private boolean isMessageEntry(final Resource resource) {
         if (resource.isResourceType(JcrResourceBundle.RT_MESSAGE_ENTRY)) {
             log.debug(
                     "Found new dictionary entry: New {} resource in '{}' detected",
                     JcrResourceBundle.RT_MESSAGE_ENTRY,
-                    change.getPath());
+                    resource.getPath());
             return true;
         }
-        // FIXME: derivatives from mix:Message are not detected
-        if (hasMixin(valueMap, JcrResourceBundle.MIXIN_MESSAGE)) {
+        // FIXME: derivatives of sling:Message are not detected
+        if (hasMixin(resource.getValueMap(), JcrResourceBundle.MIXIN_MESSAGE)) {
             log.debug(
                     "Found new dictionary entry: New {} resource in '{}' detected",
                     JcrResourceBundle.MIXIN_MESSAGE,
-                    change.getPath());
+                    resource.getPath());
             return true;
         }
         return false;
