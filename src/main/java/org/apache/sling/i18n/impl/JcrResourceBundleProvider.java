@@ -50,6 +50,7 @@ import org.apache.sling.api.resource.ValueMap;
 import org.apache.sling.api.resource.observation.ExternalResourceChangeListener;
 import org.apache.sling.api.resource.observation.ResourceChange;
 import org.apache.sling.api.resource.observation.ResourceChangeListener;
+import org.apache.sling.api.resource.path.Path;
 import org.apache.sling.commons.scheduler.ScheduleOptions;
 import org.apache.sling.commons.scheduler.Scheduler;
 import org.apache.sling.i18n.ResourceBundleProvider;
@@ -261,8 +262,15 @@ public class JcrResourceBundleProvider
                     change.getPath());
             status.reloadAll = true;
         } else {
+            boolean withinKnownDictionary = false;
             for (final String root : languageRootPaths) {
-                if (change.getPath().startsWith(root)) {
+                if (change.getType() == ResourceChange.ChangeType.REMOVED && new Path(change.getPath()).matches(root)) {
+                    // Removing an ancestor also removes its dictionaries.
+                    status.reloadAll = true;
+                    return;
+                }
+                if (new Path(root).matches(change.getPath())) {
+                    withinKnownDictionary = true;
                     // figure out which JcrResourceBundles from the cached ones is affected
                     for (JcrResourceBundle bundle : resourceBundleRegistry.getResourceBundles()) {
                         if (bundle.getLanguageRootPaths().contains(root)) {
@@ -277,54 +285,62 @@ public class JcrResourceBundleProvider
                 }
             }
 
-            // may be a completely new dictionary
+            // Removal handling only needs the path-based classification above.
+            if (change.getType() == ResourceChange.ChangeType.REMOVED) {
+                return;
+            }
+
             if (status.resourceResolver == null) {
                 status.resourceResolver = createResourceResolver();
             }
-            if (isDictionaryResource(status.resourceResolver, change)) {
+            final Resource resource = status.resourceResolver.getResource(change.getPath());
+            // An added or changed resource may have been removed before this event is processed.
+            if (resource == null) {
+                log.trace("Could not get resource for '{}' for event {}", change.getPath(), change.getType());
+                return;
+            }
+
+            // A new language root can introduce another locale or basename, even inside a known dictionary.
+            if (isDictionaryRoot(resource)) {
+                log.debug("Found dictionary root change at '{}', requiring a full reload", change.getPath());
+                status.reloadAll = true;
+                return;
+            }
+
+            // An entry outside known roots may reveal another dictionary. Entries inside known dictionaries
+            // are already covered by the targeted refreshes collected above.
+            if (!withinKnownDictionary && isMessageEntry(resource)) {
                 status.reloadAll = true;
             }
         }
     }
 
-    private boolean isDictionaryResource(final ResourceResolver resolver, final ResourceChange change) {
-        // language node changes happen quite frequently (https://issues.apache.org/jira/browse/SLING-2881)
-        // therefore only consider changes either for sling:MessageEntry's
-        // or for JSON dictionaries
-        // get valuemap
-        final Resource resource = resolver.getResource(change.getPath());
-        if (resource == null) {
-            log.trace("Could not get resource for '{}' for event {}", change.getPath(), change.getType());
-            return false;
-        }
-        if (resource.getResourceType() == null) {
-            return false;
-        }
+    /**
+     * Identifies language-root metadata independently of whether the dictionary is already known.
+     */
+    private boolean isDictionaryRoot(final Resource resource) {
+        final ValueMap valueMap = resource.getValueMap();
+        return hasMixin(valueMap, JcrResourceBundle.MIXIN_LANGUAGE) && valueMap.containsKey(PROP_LANGUAGE);
+    }
+
+    /**
+     * Recognizes message entries by their resource type or message mixin, without inferring dictionary ownership.
+     */
+    private boolean isMessageEntry(final Resource resource) {
         if (resource.isResourceType(JcrResourceBundle.RT_MESSAGE_ENTRY)) {
             log.debug(
                     "Found new dictionary entry: New {} resource in '{}' detected",
                     JcrResourceBundle.RT_MESSAGE_ENTRY,
-                    change.getPath());
+                    resource.getPath());
             return true;
         }
-        final ValueMap valueMap = resource.getValueMap();
-        // FIXME: derivatives from mix:Message are not detected
-        if (hasMixin(valueMap, JcrResourceBundle.MIXIN_MESSAGE)) {
+        // FIXME: derivatives of sling:Message are not detected
+        if (hasMixin(resource.getValueMap(), JcrResourceBundle.MIXIN_MESSAGE)) {
             log.debug(
                     "Found new dictionary entry: New {} resource in '{}' detected",
                     JcrResourceBundle.MIXIN_MESSAGE,
-                    change.getPath());
+                    resource.getPath());
             return true;
-        }
-        if (change.getPath().endsWith(".json")) {
-            // check for mixin
-            if (hasMixin(valueMap, JcrResourceBundle.MIXIN_LANGUAGE)) {
-                log.debug(
-                        "Found new dictionary: New {} resource in '{}' detected",
-                        JcrResourceBundle.MIXIN_LANGUAGE,
-                        change.getPath());
-                return true;
-            }
         }
         return false;
     }

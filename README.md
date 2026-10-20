@@ -11,6 +11,19 @@ resources.
 
 ## Dictionary updates
 
+Entry additions, edits, and removals below known dictionary roots refresh only
+the bundles using those roots and their dependent locales, including all
+matching basenames. Unrelated cached bundles remain unchanged. Changes to
+dictionary roots (including locale or basename metadata), removal of their
+ancestors, and discovery of new dictionaries still trigger a full refresh.
+Observation respects the configured included and excluded paths. A legitimate
+full refresh still clears the cache before loading replacements; this does not
+eliminate the availability gap during that refresh.
+
+JSON content events below a known file root are targeted. Providers that report
+content updates at the dictionary root, including the JCR provider's `nt:file`
+events, retain full-refresh behavior.
+
 When `preload.bundles` is enabled, an individual bundle refresh reloads parents
 before their dependent locales so that refreshed bundles use current fallback
 translations. With preloading disabled, affected bundles are invalidated and
