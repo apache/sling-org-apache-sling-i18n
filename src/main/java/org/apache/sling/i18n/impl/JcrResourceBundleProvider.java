@@ -561,10 +561,9 @@ public class JcrResourceBundleProvider
             }
             if (log.isDebugEnabled()) {
                 log.debug(
-                        "Remaining loaded dictionaries across all locales: {}",
-                        languageRootPaths.stream()
-                                .skip(MAX_LANGUAGE_ROOT_PATHS_AT_INFO)
-                                .collect(Collectors.toList()));
+                        "Currently loaded {} dictionaries across all locales: {}",
+                        languageRootPaths.size(),
+                        languageRootPaths);
             }
         } else {
             log.info("Currently loaded dictionaries across all locales: {}", languageRootPaths);
