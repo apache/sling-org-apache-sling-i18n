@@ -93,7 +93,9 @@ public class JcrResourceBundleProvider
         implements ResourceBundleProvider, ResourceChangeListener, ExternalResourceChangeListener {
 
     /** default log */
-    private final Logger log = LoggerFactory.getLogger(getClass());
+    private static final Logger log = LoggerFactory.getLogger(JcrResourceBundleProvider.class);
+
+    private static final int MAX_LANGUAGE_ROOT_PATHS_AT_INFO = 100;
 
     /**
      * A regular expression pattern matching all custom country codes.
@@ -524,7 +526,7 @@ public class JcrResourceBundleProvider
                         this.languageRootPaths.addAll(languageRoots);
 
                         log.debug("Key {} - added service registration and language roots {}", key, languageRoots);
-                        log.info("Currently loaded dictionaries across all locales: {}", languageRootPaths);
+                        logLanguageRootPaths(languageRootPaths);
 
                     } catch (final LoginException le) {
                         throw (MissingResourceException) new MissingResourceException(
@@ -544,6 +546,25 @@ public class JcrResourceBundleProvider
         }
         log.trace("getResourceBundleInternal({}) ==> {}", key, resourceBundle);
         return resourceBundle;
+    }
+
+    private static void logLanguageRootPaths(Set<String> languageRootPaths) {
+        final int total = languageRootPaths.size();
+        if (total > MAX_LANGUAGE_ROOT_PATHS_AT_INFO) {
+            if (log.isInfoEnabled()) {
+                log.info(
+                        "Currently loaded dictionaries across all locales: {} (... and {} more, enable DEBUG logging to see them)",
+                        languageRootPaths.stream()
+                                .limit(MAX_LANGUAGE_ROOT_PATHS_AT_INFO)
+                                .collect(Collectors.toList()),
+                        total - MAX_LANGUAGE_ROOT_PATHS_AT_INFO);
+            }
+            if (log.isDebugEnabled()) {
+                log.debug("Currently loaded {} dictionaries across all locales: {}", total, languageRootPaths);
+            }
+        } else {
+            log.info("Currently loaded dictionaries across all locales: {}", languageRootPaths);
+        }
     }
 
     /**
