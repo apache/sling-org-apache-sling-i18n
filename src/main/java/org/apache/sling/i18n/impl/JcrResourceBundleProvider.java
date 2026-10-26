@@ -562,7 +562,7 @@ public class JcrResourceBundleProvider
             if (log.isDebugEnabled()) {
                 log.debug(
                         "Currently loaded {} dictionaries across all locales: {}",
-                        languageRootPaths.size(),
+                        total,
                         languageRootPaths);
             }
         } else {
