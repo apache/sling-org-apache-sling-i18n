@@ -560,10 +560,7 @@ public class JcrResourceBundleProvider
                         total - MAX_LANGUAGE_ROOT_PATHS_AT_INFO);
             }
             if (log.isDebugEnabled()) {
-                log.debug(
-                        "Currently loaded {} dictionaries across all locales: {}",
-                        total,
-                        languageRootPaths);
+                log.debug("Currently loaded {} dictionaries across all locales: {}", total, languageRootPaths);
             }
         } else {
             log.info("Currently loaded dictionaries across all locales: {}", languageRootPaths);
