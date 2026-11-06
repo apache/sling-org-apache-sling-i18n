@@ -28,6 +28,7 @@ import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.IllformedLocaleException;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -132,7 +133,8 @@ public class JcrResourceBundleProvider
     /**
      * paths from which JCR resource bundles have been loaded
      */
-    private final Set<String> languageRootPaths = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+    private volatile Set<String> languageRootPaths =
+            Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
 
     /**
      * Return root resource bundle as created on-demand by
@@ -224,6 +226,7 @@ public class JcrResourceBundleProvider
         if (resourceBundleRegistry.isClosed()) {
             return;
         }
+        final long generation = resourceBundleRegistry.getGeneration();
         final ChangeStatus status = new ChangeStatus();
         try {
             for (final ResourceChange change : changes) {
@@ -237,11 +240,15 @@ public class JcrResourceBundleProvider
                     break;
                 }
             }
-            if (status.reloadAll) {
+            if (status.reloadAll || !status.reloadBundles.isEmpty()) {
+                resourceBundleRegistry.recordChange();
+            }
+            if (status.reloadAll
+                    || (!status.reloadBundles.isEmpty() && resourceBundleRegistry.getGeneration() != generation)) {
                 this.scheduleReloadBundles(true);
             } else {
                 for (final JcrResourceBundle bundle : status.reloadBundles) {
-                    this.scheduleReloadBundle(bundle);
+                    this.scheduleReloadBundle(bundle, generation);
                 }
             }
         } catch (final LoginException le) {
@@ -380,14 +387,13 @@ public class JcrResourceBundleProvider
                     @Override
                     public void run() {
                         log.info("Reloading all resource bundles");
-                        clearCache();
-                        preloadBundles();
+                        reloadAllBundles();
                     }
                 },
                 options);
     }
 
-    private void scheduleReloadBundle(final JcrResourceBundle bundle) {
+    private void scheduleReloadBundle(final JcrResourceBundle bundle, final long generation) {
         final Key key = new Key(bundle.getBaseName(), bundle.getLocale());
 
         // defer this job
@@ -399,7 +405,7 @@ public class JcrResourceBundleProvider
                 new Runnable() {
                     @Override
                     public void run() {
-                        reloadBundle(key);
+                        reloadBundle(key, generation);
                         scheduledJobNames.remove(jobName);
                     }
                 },
@@ -407,9 +413,17 @@ public class JcrResourceBundleProvider
     }
 
     void reloadBundle(final Key key) {
+        reloadBundle(key, resourceBundleRegistry.getGeneration());
+    }
+
+    private void reloadBundle(final Key key, final long generation) {
+        if (resourceBundleRegistry.isClosed() || resourceBundleRegistry.getGeneration() != generation) {
+            log.debug("Skipping obsolete resource bundle reload for {}", key);
+            return;
+        }
         log.info("Reloading resource bundle for {}", key);
         if (!this.preloadBundles) {
-            resourceBundleRegistry.unregisterResourceBundle(key);
+            resourceBundleRegistry.unregisterResourceBundle(key, generation);
         }
 
         Collection<JcrResourceBundle> dependentBundles = new ArrayList<>();
@@ -427,11 +441,11 @@ public class JcrResourceBundleProvider
         }
         if (this.preloadBundles && !resourceBundleRegistry.isClosed()) {
             // reload the bundle from the repository (will also fill cache and register as a service)
-            getResourceBundleInternal(null, key.baseName, key.locale, true);
+            getResourceBundleInternal(null, key.baseName, key.locale, generation);
         }
 
         for (JcrResourceBundle dependentBundle : dependentBundles) {
-            reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()));
+            reloadBundle(new Key(dependentBundle.getBaseName(), dependentBundle.getLocale()), generation);
         }
     }
 
@@ -487,11 +501,12 @@ public class JcrResourceBundleProvider
      */
     private ResourceBundle getResourceBundleInternal(
             ResourceResolver optionalResolver, String baseName, Locale locale) {
-        return getResourceBundleInternal(optionalResolver, baseName, locale, false);
+        return getResourceBundleInternal(optionalResolver, baseName, locale, null);
     }
 
     private ResourceBundle getResourceBundleInternal(
-            ResourceResolver optionalResolver, final String baseName, Locale locale, final boolean forceReload) {
+            ResourceResolver optionalResolver, final String baseName, Locale locale, final Long reloadGeneration) {
+        final boolean forceReload = reloadGeneration != null;
         if (locale == null) {
             locale = defaultLocale;
         }
@@ -512,31 +527,38 @@ public class JcrResourceBundleProvider
                     log.debug("getResourceBundleInternal({}): got cache hit on second try", key);
                 } else {
                     log.debug("getResourceBundleInternal({}): reading from Repository", key);
-                    ResourceResolver localResolver = null;
-                    try {
-                        if (optionalResolver == null) {
-                            localResolver = createResourceResolver();
-                            optionalResolver = localResolver;
+                    boolean published;
+                    do {
+                        final long generation = forceReload ? reloadGeneration : resourceBundleRegistry.getGeneration();
+                        if (forceReload && resourceBundleRegistry.getGeneration() != generation) {
+                            return resourceBundleRegistry.getResourceBundle(key);
                         }
+                        ResourceResolver localResolver = null;
+                        try {
+                            if (optionalResolver == null) {
+                                localResolver = createResourceResolver();
+                            }
 
-                        resourceBundle = createResourceBundle(optionalResolver, key.baseName, key.locale);
-                        resourceBundleRegistry.registerResourceBundle(key, resourceBundle);
+                            resourceBundle = createResourceBundle(
+                                    localResolver == null ? optionalResolver : localResolver, key.baseName, key.locale);
+                            published = resourceBundleRegistry.registerResourceBundle(key, resourceBundle, generation);
+                            if (!published && forceReload) {
+                                return resourceBundleRegistry.getResourceBundle(key);
+                            }
 
-                        final Set<String> languageRoots = resourceBundle.getLanguageRootPaths();
-                        this.languageRootPaths.addAll(languageRoots);
+                            log.debug("Key {} - loaded language roots {}", key, resourceBundle.getLanguageRootPaths());
+                            logLanguageRootPaths(languageRootPaths);
 
-                        log.debug("Key {} - added service registration and language roots {}", key, languageRoots);
-                        logLanguageRootPaths(languageRootPaths);
-
-                    } catch (final LoginException le) {
-                        throw (MissingResourceException) new MissingResourceException(
-                                        "Unable to create service resource resolver", baseName, locale.toString())
-                                .initCause(le);
-                    } finally {
-                        if (localResolver != null) {
-                            localResolver.close();
+                        } catch (final LoginException le) {
+                            throw (MissingResourceException) new MissingResourceException(
+                                            "Unable to create service resource resolver", baseName, locale.toString())
+                                    .initCause(le);
+                        } finally {
+                            if (localResolver != null) {
+                                localResolver.close();
+                            }
                         }
-                    }
+                    } while (!published);
                 }
             } catch (InterruptedException e) {
                 Thread.interrupted();
@@ -664,16 +686,27 @@ public class JcrResourceBundleProvider
     }
 
     void clearCache() {
-        languageRootPaths.clear();
         resourceBundleRegistry.unregisterAll();
     }
 
-    private void preloadBundles() {
-        if (this.preloadBundles && !resourceBundleRegistry.isClosed()) {
+    /**
+     * Refreshes all bundles without clearing existing services upfront when preloading is enabled.
+     * Otherwise, invalidates the cache for on-demand loading. Does nothing after registry closure.
+     */
+    void reloadAllBundles() {
+        if (resourceBundleRegistry.isClosed()) {
+            return;
+        }
+        if (!this.preloadBundles) {
+            clearCache();
+        } else {
+            // Detect changes during staging so this refresh cannot overwrite newer work.
+            final long revision = resourceBundleRegistry.getRevision();
             try (final ResourceResolver resolver = createResourceResolver()) {
+                // Build fresh parent chains separately; lookups continue using the current generation.
+                final Map<Key, JcrResourceBundle> replacements = new LinkedHashMap<>();
                 final Iterator<Map<String, Object>> bundles =
                         resolver.queryResources(JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
-                final Set<Key> usedKeys = new HashSet<>();
                 while (bundles.hasNext()) {
                     final Map<String, Object> bundle = bundles.next();
                     if (bundle.containsKey(PROP_LANGUAGE) && bundle.containsKey(PROP_PATH)) {
@@ -681,12 +714,14 @@ public class JcrResourceBundleProvider
                         final String language = bundle.get(PROP_LANGUAGE).toString();
                         if (this.pathFilter.includePath(path)) {
                             final Locale locale = toLocale(language);
-                            final String baseName = bundle.containsKey(PROP_BASENAME)
-                                    ? bundle.get(PROP_BASENAME).toString()
-                                    : null;
-                            final Key key = new Key(baseName, locale);
-                            if (usedKeys.add(key)) {
-                                getResourceBundleInternal(resolver, baseName, locale);
+                            loadReplacement(resolver, new Key(null, locale), replacements);
+                            final Object baseNames = bundle.get(PROP_BASENAME);
+                            if (baseNames instanceof String[]) {
+                                for (String baseName : (String[]) baseNames) {
+                                    loadReplacement(resolver, new Key(baseName, locale), replacements);
+                                }
+                            } else if (baseNames instanceof String) {
+                                loadReplacement(resolver, new Key((String) baseNames, locale), replacements);
                             }
                         } else {
                             log.warn(
@@ -696,10 +731,34 @@ public class JcrResourceBundleProvider
                         }
                     }
                 }
+                // Register replacements before retiring old services, including obsolete bundles.
+                // OSGi registration is not globally atomic; superseded staging is discarded and retried.
+                if (!resourceBundleRegistry.replaceAll(replacements, revision) && !resourceBundleRegistry.isClosed()) {
+                    log.debug("Resource bundles changed during full reload; scheduling a fresh reload");
+                    scheduleReloadBundles(true);
+                }
             } catch (final LoginException le) {
-                log.error("Unable to create service user resource resolver.", le);
+                log.error("Unable to reload resource bundles; retaining the previous bundles.", le);
+            } catch (final RuntimeException e) {
+                log.error("Unable to complete full resource bundle reload.", e);
+                throw e;
             }
         }
+    }
+
+    private JcrResourceBundle loadReplacement(
+            ResourceResolver resolver, Key key, Map<Key, JcrResourceBundle> replacements) {
+        JcrResourceBundle bundle = replacements.get(key);
+        if (bundle == null) {
+            final Locale parentLocale = getParentLocale(key.locale);
+            final ResourceBundle parent = parentLocale == null
+                    ? getRootResourceBundle()
+                    : loadReplacement(resolver, new Key(key.baseName, parentLocale), replacements);
+            bundle = new JcrResourceBundle(key.locale, key.baseName, resolver, locatorPaths, pathFilter);
+            bundle.setParent(parent);
+            replacements.put(key, bundle);
+        }
+        return bundle;
     }
 
     /**
@@ -928,11 +987,25 @@ public class JcrResourceBundleProvider
      * It stores the references to the registered resource bundles and to the associated service registrations.
      * Publication and removal are coordinated with closure; OSGi registration callbacks run outside the registry monitor.
      */
-    private static class ResourceBundleRegistry implements AutoCloseable {
+    private class ResourceBundleRegistry implements AutoCloseable {
         private final Logger log = LoggerFactory.getLogger(getClass());
         private final BundleContext bundleContext;
         final AtomicBoolean closed = new AtomicBoolean(false);
         private final AtomicReference<ConcurrentHashMap<Key, Entry>> registrations;
+        /**
+         * Identifies the current cache generation. Advances when the entire registry is replaced or cleared,
+         * preventing older in-flight loads and queued targeted reloads from publishing into the new generation.
+         * Individual bundle updates do not advance this counter.
+         */
+        private long generation;
+
+        /**
+         * Tracks changes that can invalidate a staged full reload. Advances on bundle publication or removal,
+         * relevant observed repository changes, and full registry replacement or clearing. A full reload captures
+         * this revision before construction and may publish only if it is unchanged; otherwise, it is discarded
+         * and retried. Unlike {@link #generation}, this counter also advances for individual bundle updates.
+         */
+        private long revision;
 
         private static class Entry {
             final JcrResourceBundle resourceBundle;
@@ -960,22 +1033,38 @@ public class JcrResourceBundleProvider
                     .collect(Collectors.toList());
         }
 
-        void registerResourceBundle(Key key, JcrResourceBundle resourceBundle) {
+        synchronized long getGeneration() {
+            return generation;
+        }
+
+        synchronized long getRevision() {
+            return revision;
+        }
+
+        synchronized void recordChange() {
+            revision++;
+        }
+
+        boolean registerResourceBundle(Key key, JcrResourceBundle resourceBundle, long expectedGeneration) {
             if (closed.get()) {
-                return;
+                return true;
             }
             ServiceRegistration<ResourceBundle> serviceReg =
                     bundleContext.registerService(ResourceBundle.class, resourceBundle, serviceProps(key));
             final Entry oldEntry;
             final boolean published;
             synchronized (this) {
-                published = !closed.get();
+                published = !closed.get() && generation == expectedGeneration;
                 oldEntry = published ? registrations.get().put(key, new Entry(resourceBundle, serviceReg)) : null;
+                if (published) {
+                    languageRootPaths.addAll(resourceBundle.getLanguageRootPaths());
+                    revision++;
+                }
             }
             // Registration callbacks can close the registry before publication.
             if (!published) {
                 serviceReg.unregister();
-                return;
+                return closed.get();
             }
             if (oldEntry != null) {
                 oldEntry.serviceRegistration.unregister();
@@ -984,6 +1073,47 @@ public class JcrResourceBundleProvider
                     "[ResourceBundleRegistry.updateResourceBundle] Registry updated - Nr of entries: {} - Keys: {}",
                     registrations.get().size(),
                     registrations.get().keySet());
+            return true;
+        }
+
+        boolean replaceAll(Map<Key, JcrResourceBundle> bundles, long expectedRevision) {
+            final ConcurrentHashMap<Key, Entry> replacements = new ConcurrentHashMap<>();
+            final Set<String> roots = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+            Map<Key, Entry> previous = null;
+            boolean published = false;
+            try {
+                for (Map.Entry<Key, JcrResourceBundle> bundle : bundles.entrySet()) {
+                    if (closed.get() || getRevision() != expectedRevision) {
+                        return false;
+                    }
+                    ServiceRegistration<ResourceBundle> registration = bundleContext.registerService(
+                            ResourceBundle.class, bundle.getValue(), serviceProps(bundle.getKey()));
+                    replacements.put(bundle.getKey(), new Entry(bundle.getValue(), registration));
+                    roots.addAll(bundle.getValue().getLanguageRootPaths());
+                }
+                synchronized (this) {
+                    if (!closed.get() && revision == expectedRevision) {
+                        previous = registrations.getAndSet(replacements);
+                        languageRootPaths = roots;
+                        generation++;
+                        revision++;
+                        published = true;
+                    }
+                }
+            } finally {
+                if (!published) {
+                    for (Entry entry : replacements.values()) {
+                        entry.serviceRegistration.unregister();
+                    }
+                }
+            }
+            if (published) {
+                for (Entry entry : previous.values()) {
+                    entry.serviceRegistration.unregister();
+                }
+                logLanguageRootPaths(roots);
+            }
+            return published;
         }
 
         private static Dictionary<String, Object> serviceProps(Key key) {
@@ -995,13 +1125,14 @@ public class JcrResourceBundleProvider
             return serviceProps;
         }
 
-        void unregisterResourceBundle(Key key) {
+        void unregisterResourceBundle(Key key, long expectedGeneration) {
             final Entry oldEntry;
             synchronized (this) {
-                if (closed.get()) {
+                if (closed.get() || generation != expectedGeneration) {
                     return;
                 }
                 oldEntry = registrations.get().remove(key);
+                revision++;
             }
             if (oldEntry != null) {
                 oldEntry.serviceRegistration.unregister();
@@ -1030,6 +1161,9 @@ public class JcrResourceBundleProvider
                         registrations.get().size(),
                         registrations.get().keySet());
                 oldServiceReg = registrations.getAndSet(new ConcurrentHashMap<>());
+                languageRootPaths = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+                generation++;
+                revision++;
             }
             for (Entry entry : oldServiceReg.values()) {
                 entry.serviceRegistration.unregister();
