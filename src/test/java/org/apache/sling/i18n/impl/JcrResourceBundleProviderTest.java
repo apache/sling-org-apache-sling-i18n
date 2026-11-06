@@ -24,11 +24,21 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import org.apache.sling.api.resource.LoginException;
@@ -49,12 +59,17 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.Mockito;
 import org.osgi.framework.Constants;
+import org.osgi.framework.ServiceEvent;
+import org.osgi.framework.ServiceListener;
+import org.osgi.framework.ServiceReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 
 /**
@@ -252,6 +267,415 @@ public class JcrResourceBundleProviderTest {
                 assertSame(bundles.get(i), after.get(basename).get(i));
             }
         });
+    }
+
+    /**
+     * Pauses an eager full refresh during construction and verifies that cached lookups and old services
+     * remain available. After publication, checks fresh English fallback references and translations,
+     * registration-before-retirement ordering, and preservation of old bundle objects as snapshots.
+     */
+    @Test
+    public void fullReloadKeepsOldServicesUntilFreshFallbacksAreReady() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        ResourceBundle german = provider.getResourceBundle(Locale.GERMAN);
+        Set<ServiceReference<ResourceBundle>> previousServices = bundleServices();
+        context.resourceResolver()
+                .getResource("/apps/i18n/en/" + KEY)
+                .adaptTo(ModifiableValueMap.class)
+                .put("sling:message", "Updated English");
+        CountDownLatch loading = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        pauseNextDictionaryLoad(loading, resume);
+        List<String> fallbacksDuringRetirement = new ArrayList<>();
+        List<Integer> serviceEvents = new ArrayList<>();
+        ServiceListener listener = event -> {
+            serviceEvents.add(event.getType());
+            if (event.getType() == ServiceEvent.UNREGISTERING) {
+                fallbacksDuringRetirement.add(
+                        provider.getResourceBundle(Locale.GERMAN).getString(KEY));
+            }
+        };
+        context.bundleContext().addServiceListener(listener, "(objectClass=java.util.ResourceBundle)");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> reload = executor.submit(provider::reloadAllBundles);
+            assertTrue(loading.await(10, TimeUnit.SECONDS));
+            assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
+            assertSame(german, provider.getResourceBundle(Locale.GERMAN));
+            assertEquals("English", german.getString(KEY));
+            assertEquals(previousServices, bundleServices());
+            resume.countDown();
+            reload.get(10, TimeUnit.SECONDS);
+            ResourceBundle replacement = provider.getResourceBundle(Locale.GERMAN);
+            assertNotSame(german, replacement);
+            assertEquals("Updated English", replacement.getString(KEY));
+            assertSame(provider.getResourceBundle(Locale.ENGLISH), ((JcrResourceBundle) replacement).getParent());
+            assertEquals("English", german.getString(KEY));
+            assertFalse(fallbacksDuringRetirement.isEmpty());
+            assertTrue(fallbacksDuringRetirement.stream().allMatch("Updated English"::equals));
+            assertTrue(serviceEvents.lastIndexOf(ServiceEvent.REGISTERED)
+                    < serviceEvents.indexOf(ServiceEvent.UNREGISTERING));
+            for (ServiceReference<ResourceBundle> reference : previousServices) {
+                assertFalse(bundleServices().contains(reference));
+            }
+            assertEquals(
+                    "Updated English",
+                    provider.getResourceBundle("checkout", Locale.GERMAN).getString(KEY));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            context.bundleContext().removeServiceListener(listener);
+        }
+    }
+
+    /**
+     * Changes a dictionary's locale, removes a basename, and deletes another dictionary.
+     * A full refresh must retire obsolete services and forget the deleted language root,
+     * while making the new locale available with its English fallback.
+     */
+    @Test
+    public void fullReloadRetiresRemovedOwnershipAndLanguageRoots() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        Resource german = context.resourceResolver().getResource("/apps/i18n/de");
+        german.adaptTo(ModifiableValueMap.class).put("jcr:language", "it");
+        context.resourceResolver()
+                .getResource("/apps/i18n/en")
+                .adaptTo(ModifiableValueMap.class)
+                .put("sling:basename", new String[] {"checkout"});
+        context.resourceResolver().delete(context.resourceResolver().getResource("/apps/i18n/fr"));
+
+        provider.reloadAllBundles();
+
+        assertTrue(context.bundleContext()
+                .getServiceReferences(ResourceBundle.class, "(locale=de)")
+                .isEmpty());
+        assertTrue(context.bundleContext()
+                .getServiceReferences(ResourceBundle.class, "(locale=fr)")
+                .isEmpty());
+        assertTrue(context.bundleContext()
+                .getServiceReferences(ResourceBundle.class, "(baseName=other)")
+                .isEmpty());
+        assertEquals("English", provider.getResourceBundle(Locale.ITALIAN).getString(KEY));
+        context.create().resource("/apps/i18n/fr");
+        provider.onChange(Collections.singletonList(new ResourceChange(ChangeType.CHANGED, "/apps/i18n/fr", false)));
+        assertTrue("Deleted language roots must not remain in observation metadata", scheduledJobs.isEmpty());
+    }
+
+    /**
+     * Fails a repository query after replacement construction has begun. The exception must propagate
+     * without replacing the cached English bundle or changing any existing service registrations.
+     */
+    @Test
+    public void failedFullReloadRetainsThePreviousGeneration() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        Set<ServiceReference<ResourceBundle>> previousServices = bundleServices();
+        ResourceResolver resolver = factory.getServiceResourceResolver(null);
+        AtomicInteger queries = new AtomicInteger();
+        Mockito.doAnswer(query -> {
+                    if (queries.incrementAndGet() == 2) {
+                        throw new IllegalStateException("Repository query failed");
+                    }
+                    return dictionaries().iterator();
+                })
+                .when(resolver)
+                .findResources(JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
+
+        assertThrows(IllegalStateException.class, provider::reloadAllBundles);
+
+        assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
+        assertEquals("English", english.getString(KEY));
+        assertEquals(previousServices, bundleServices());
+    }
+
+    /**
+     * Denies the service resolver login for an eager full refresh. Existing cached bundles and their
+     * service registrations must remain intact despite the refresh being unable to start construction.
+     */
+    @Test
+    public void failedFullReloadLoginRetainsThePreviousGeneration() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        ResourceBundle english = provider.getResourceBundle(Locale.ENGLISH);
+        Set<ServiceReference<ResourceBundle>> previousServices = bundleServices();
+        Mockito.when(factory.getServiceResourceResolver(null)).thenThrow(new LoginException("Service login failed"));
+
+        provider.reloadAllBundles();
+
+        assertSame(english, provider.getResourceBundle(Locale.ENGLISH));
+        assertEquals(previousServices, bundleServices());
+    }
+
+    /**
+     * Publishes a targeted English update while an eager full refresh is paused during construction.
+     * The superseded full refresh must retain the newer services and schedule a retry that exposes
+     * the updated English translation through the German fallback chain.
+     */
+    @Test
+    public void concurrentTargetedRefreshSupersedesStagedFullReload() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        CountDownLatch loading = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        pauseNextDictionaryLoad(loading, resume);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> reload = executor.submit(provider::reloadAllBundles);
+            assertTrue(loading.await(10, TimeUnit.SECONDS));
+            context.resourceResolver()
+                    .getResource("/apps/i18n/en/" + KEY)
+                    .adaptTo(ModifiableValueMap.class)
+                    .put("sling:message", "Concurrent update");
+            provider.reloadBundle(new JcrResourceBundleProvider.Key(null, Locale.ENGLISH));
+            ResourceBundle concurrent = provider.getResourceBundle(Locale.ENGLISH);
+            Set<ServiceReference<ResourceBundle>> currentServices = bundleServices();
+            resume.countDown();
+            reload.get(10, TimeUnit.SECONDS);
+            assertSame("Superseded reload must not publish", concurrent, provider.getResourceBundle(Locale.ENGLISH));
+            assertEquals(currentServices, bundleServices());
+            assertEquals(Collections.singleton(RELOAD_ALL), scheduledJobs.keySet());
+            runScheduledWork();
+            assertEquals(
+                    "Concurrent update",
+                    provider.getResourceBundle(Locale.GERMAN).getString(KEY));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    /**
+     * Pauses an uncached Italian lookup inside its service registration callback, then changes the
+     * translation and completes a full refresh. The older lookup must retry against the new generation,
+     * returning the current translation and parent without leaving a duplicate Italian service.
+     */
+    @Test
+    public void oldInFlightLookupCannotOverwriteTheFullReload() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        Resource italian = createDictionary("/apps/i18n/it", "it");
+        Resource message =
+                createEntry(italian.getPath() + "/" + KEY, JcrResourceBundle.RT_MESSAGE_ENTRY, "Old Italian");
+        CountDownLatch registering = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        AtomicBoolean first = new AtomicBoolean(true);
+        ServiceListener listener = event -> {
+            if (event.getType() == ServiceEvent.REGISTERED && first.getAndSet(false)) {
+                registering.countDown();
+                awaitReloadGate(resume);
+            }
+        };
+        context.bundleContext().addServiceListener(listener, "(&(objectClass=java.util.ResourceBundle)(locale=it))");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<ResourceBundle> lookup = executor.submit(() -> provider.getResourceBundle(Locale.ITALIAN));
+            assertTrue(registering.await(10, TimeUnit.SECONDS));
+            message.adaptTo(ModifiableValueMap.class).put("sling:message", "New Italian");
+            provider.reloadAllBundles();
+            resume.countDown();
+            assertEquals("New Italian", lookup.get(10, TimeUnit.SECONDS).getString(KEY));
+            ResourceBundle current = provider.getResourceBundle(Locale.ITALIAN);
+            assertEquals("New Italian", current.getString(KEY));
+            assertSame(provider.getResourceBundle(Locale.ENGLISH), ((JcrResourceBundle) current).getParent());
+            assertEquals(
+                    1,
+                    context.bundleContext()
+                            .getServiceReferences(ResourceBundle.class, "(locale=it)")
+                            .size());
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            context.bundleContext().removeServiceListener(listener);
+        }
+    }
+
+    /**
+     * Deactivates the provider while the first staged replacement is inside its registration callback.
+     * Both the old services and the unpublished replacement must be unregistered exactly once,
+     * leaving no ResourceBundle services after the refresh resumes.
+     */
+    @Test
+    public void shutdownDuringFullReloadRegistrationLeavesNoServices() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        int originalServices = bundleServices().size();
+        CountDownLatch registering = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        Map<Long, Integer> unregistrations = new ConcurrentHashMap<>();
+        ServiceListener listener = event -> {
+            if (event.getType() == ServiceEvent.REGISTERED) {
+                registering.countDown();
+                awaitReloadGate(resume);
+            } else if (event.getType() == ServiceEvent.UNREGISTERING) {
+                Long id = (Long) event.getServiceReference().getProperty(Constants.SERVICE_ID);
+                unregistrations.merge(id, 1, Integer::sum);
+            }
+        };
+        context.bundleContext().addServiceListener(listener, "(objectClass=java.util.ResourceBundle)");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> reload = executor.submit(provider::reloadAllBundles);
+            assertTrue(registering.await(10, TimeUnit.SECONDS));
+            provider.deactivate();
+            resume.countDown();
+            reload.get(10, TimeUnit.SECONDS);
+            assertTrue(bundleServices().isEmpty());
+            assertEquals(originalServices + 1, unregistrations.size());
+            unregistrations.values().forEach(count -> assertEquals(Integer.valueOf(1), count));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            context.bundleContext().removeServiceListener(listener);
+        }
+    }
+
+    /**
+     * Queues a targeted German refresh, then changes the dictionary's locale to Italian and completes
+     * a full refresh first. Executing the older queued job must not recreate the retired German service.
+     */
+    @Test
+    public void fullReloadSupersedesAlreadyScheduledTargetedJobs() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        Resource german = context.resourceResolver().getResource("/apps/i18n/de");
+        Resource entry = createEntry(german.getPath() + "/" + KEY, JcrResourceBundle.RT_MESSAGE_ENTRY, "German");
+        provider.onChange(Collections.singletonList(new ResourceChange(ChangeType.CHANGED, entry.getPath(), false)));
+        assertFalse(scheduledJobs.isEmpty());
+        german.adaptTo(ModifiableValueMap.class).put("jcr:language", "it");
+
+        provider.reloadAllBundles();
+        runScheduledWork();
+
+        assertTrue(context.bundleContext()
+                .getServiceReferences(ResourceBundle.class, "(locale=de)")
+                .isEmpty());
+        assertEquals("German", provider.getResourceBundle(Locale.ITALIAN).getString(KEY));
+    }
+
+    /**
+     * Pauses an executing targeted German refresh during registration, then moves its dictionary to
+     * Italian and completes a full refresh. Resuming the old refresh must neither publish its German
+     * replacement nor recreate dependent German country bundles.
+     */
+    @Test
+    public void runningTargetedRefreshCannotResurrectARetiredLocale() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        Resource german = context.resourceResolver().getResource("/apps/i18n/de");
+        createEntry(german.getPath() + "/" + KEY, JcrResourceBundle.RT_MESSAGE_ENTRY, "Moved message");
+        CountDownLatch registering = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        AtomicBoolean first = new AtomicBoolean(true);
+        ServiceListener listener = event -> {
+            if (event.getType() == ServiceEvent.REGISTERED && first.getAndSet(false)) {
+                registering.countDown();
+                awaitReloadGate(resume);
+            }
+        };
+        context.bundleContext().addServiceListener(listener, "(&(objectClass=java.util.ResourceBundle)(locale=de))");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> targeted = executor.submit(
+                    () -> provider.reloadBundle(new JcrResourceBundleProvider.Key(null, Locale.GERMAN)));
+            assertTrue(registering.await(10, TimeUnit.SECONDS));
+            german.adaptTo(ModifiableValueMap.class).put("jcr:language", "it");
+            provider.reloadAllBundles();
+            resume.countDown();
+            targeted.get(10, TimeUnit.SECONDS);
+            assertTrue(context.bundleContext()
+                    .getServiceReferences(ResourceBundle.class, "(|(locale=de)(locale=de_DE))")
+                    .isEmpty());
+            assertEquals(
+                    "Moved message", provider.getResourceBundle(Locale.ITALIAN).getString(KEY));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            context.bundleContext().removeServiceListener(listener);
+        }
+    }
+
+    /**
+     * Observes a German entry update while full-refresh construction is paused, without executing the
+     * targeted job. Observation alone must invalidate staging, preserve the current services, and
+     * schedule a fresh full refresh that makes the updated translation available.
+     */
+    @Test
+    public void observationDuringFullReloadRequiresAFreshGeneration() throws Exception {
+        assumeTrue(preload);
+        setupObservation();
+        Set<ServiceReference<ResourceBundle>> previousServices = bundleServices();
+        CountDownLatch loading = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        pauseNextDictionaryLoad(loading, resume);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> reload = executor.submit(provider::reloadAllBundles);
+            assertTrue(loading.await(10, TimeUnit.SECONDS));
+            Resource entry = createEntry("/apps/i18n/de/" + KEY, JcrResourceBundle.RT_MESSAGE_ENTRY, "Observed update");
+            provider.onChange(
+                    Collections.singletonList(new ResourceChange(ChangeType.CHANGED, entry.getPath(), false)));
+            resume.countDown();
+            reload.get(10, TimeUnit.SECONDS);
+            assertEquals("Aborted generation must not replace any service", previousServices, bundleServices());
+            assertEquals(Collections.singleton(RELOAD_ALL), scheduledJobs.keySet());
+            runScheduledWork();
+            assertEquals(
+                    "Observed update", provider.getResourceBundle(Locale.GERMAN).getString(KEY));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    /**
+     * Runs a full refresh with preloading disabled. Services must be removed immediately, with a new
+     * bundle constructed only when a subsequent lookup requests it.
+     */
+    @Test
+    public void fullReloadWithoutPreloadingRemainsLazy() throws Exception {
+        assumeTrue(!preload);
+        setupObservation();
+        ResourceBundle old = provider.getResourceBundle(Locale.ENGLISH);
+        provider.reloadAllBundles();
+        assertTrue(bundleServices().isEmpty());
+        assertNotSame(old, provider.getResourceBundle(Locale.ENGLISH));
+    }
+
+    private Set<ServiceReference<ResourceBundle>> bundleServices() throws Exception {
+        return new HashSet<>(context.bundleContext().getServiceReferences(ResourceBundle.class, null));
+    }
+
+    private void pauseNextDictionaryLoad(CountDownLatch loading, CountDownLatch resume) throws Exception {
+        AtomicBoolean first = new AtomicBoolean(true);
+        ResourceResolver resolver = factory.getServiceResourceResolver(null);
+        Mockito.doAnswer(query -> {
+                    if (first.getAndSet(false)) {
+                        loading.countDown();
+                        awaitReloadGate(resume);
+                    }
+                    return dictionaries().iterator();
+                })
+                .when(resolver)
+                .findResources(JcrResourceBundle.QUERY_LANGUAGE_ROOTS, "xpath");
+    }
+
+    private static void awaitReloadGate(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(10, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while waiting for full reload", e);
+        }
     }
 
     /**

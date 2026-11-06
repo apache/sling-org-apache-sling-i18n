@@ -16,9 +16,10 @@ the bundles using those roots and their dependent locales, including all
 matching basenames. Unrelated cached bundles remain unchanged. Changes to
 dictionary roots (including locale or basename metadata), removal of their
 ancestors, and discovery of new dictionaries still trigger a full refresh.
-Observation respects the configured included and excluded paths. A legitimate
-full refresh still clears the cache before loading replacements; this does not
-eliminate the availability gap during that refresh.
+Observation respects the configured included and excluded paths. With preloading
+enabled, a full refresh builds fresh bundles and fallback chains before publishing
+replacements and retiring the old services. Failed construction retains the old
+bundles. With preloading disabled, a full refresh clears the cache as before.
 
 JSON content events below a known file root are targeted. Providers that report
 content updates at the dictionary root, including the JCR provider's `nt:file`
